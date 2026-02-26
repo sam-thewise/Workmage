@@ -1,0 +1,57 @@
+<template>
+  <div class="purchase-success">
+    <h1>Purchase Successful</h1>
+    <p v-if="loading">Confirming your purchase...</p>
+    <template v-else-if="error">
+      <p class="error">{{ error }}</p>
+      <router-link to="/marketplace" class="btn">Back to Marketplace</router-link>
+    </template>
+    <template v-else>
+      <p>Thank you! You now have access to this agent.</p>
+      <router-link :to="`/agents/${agentId}`" class="btn primary">View Agent</router-link>
+      <router-link to="/marketplace" class="btn">Browse More</router-link>
+    </template>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import api from '@/services/api'
+
+const route = useRoute()
+const authStore = useAuthStore()
+const loading = ref(true)
+const error = ref('')
+const agentId = ref(route.query.agent_id || '')
+
+onMounted(async () => {
+  const sid = route.query.session_id
+  const aid = route.query.agent_id
+  if (!sid || !aid || !authStore.isAuthenticated) {
+    loading.value = false
+    if (!authStore.isAuthenticated) {
+      error.value = 'Please log in to confirm your purchase.'
+    } else {
+      error.value = 'Invalid redirect. If you completed payment, your purchase may still have been recorded.'
+    }
+    return
+  }
+  try {
+    await api.post('/purchases/confirm-stripe', { session_id: sid, agent_id: parseInt(aid, 10) })
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Could not confirm purchase. Contact support if payment was charged.'
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+
+<style scoped>
+.purchase-success { text-align: center; padding: 2rem; }
+.purchase-success h1 { margin-bottom: 1rem; }
+.btn { display: inline-block; padding: 0.75rem 1.5rem; margin: 0.5rem; border-radius: 8px; text-decoration: none; border: 1px solid #444; color: #e2e8f0; }
+.btn.primary { background: #7c3aed; border-color: #7c3aed; color: white; }
+.error { color: #f87171; margin: 1rem 0; }
+</style>
