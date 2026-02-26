@@ -1,7 +1,7 @@
 <template>
   <div class="chains-list">
     <h1>Chains</h1>
-    <p class="subtitle">Build agent pipelines by connecting outputs to inputs.</p>
+    <p class="subtitle">Build and publish chain listings with moderation.</p>
     <router-link to="/chains/new" class="btn primary">Create Chain</router-link>
     <div v-if="loading" class="loading">Loading...</div>
     <ul v-else-if="chains.length === 0" class="empty">
@@ -11,7 +11,7 @@
       <li v-for="c in chains" :key="c.id">
         <router-link :to="`/chains/${c.id}/edit`" class="chain-card">
           <span class="name">{{ c.name }}</span>
-          <span class="meta">Updated {{ formatDate(c.updated_at) }}</span>
+          <span class="meta">Status: {{ c.status }} · Updated {{ formatDate(c.updated_at || c.created_at) }}</span>
         </router-link>
       </li>
     </ul>
@@ -28,7 +28,7 @@ const loading = ref(true)
 async function loadChains() {
   loading.value = true
   try {
-    const { data } = await api.get('/chains')
+    const { data } = await api.get('/chains/my')
     chains.value = data || []
   } catch {
     chains.value = []

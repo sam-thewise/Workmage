@@ -3,8 +3,9 @@
     <nav class="nav">
       <router-link to="/">Home</router-link>
       <router-link to="/marketplace">Marketplace</router-link>
-      <router-link to="/chains">Chains</router-link>
+      <router-link to="/marketplace/chains">Chain Marketplace</router-link>
       <template v-if="authStore.isAuthenticated">
+        <router-link to="/chains">My Chains</router-link>
         <router-link v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'moderator'" to="/admin">Admin</router-link>
         <router-link to="/dashboard">Dashboard</router-link>
         <router-link to="/run">Run Agent</router-link>

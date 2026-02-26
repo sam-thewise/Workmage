@@ -7,9 +7,10 @@
       <router-link to="/marketplace" class="btn">Back to Marketplace</router-link>
     </template>
     <template v-else>
-      <p>Thank you! You now have access to this agent.</p>
-      <router-link :to="`/agents/${agentId}`" class="btn primary">View Agent</router-link>
-      <router-link to="/marketplace" class="btn">Browse More</router-link>
+      <p>Thank you! You now have access to this {{ chainId ? 'chain' : 'agent' }}.</p>
+      <router-link v-if="agentId" :to="`/agents/${agentId}`" class="btn primary">View Agent</router-link>
+      <router-link v-else-if="chainId" :to="`/marketplace/chains/${chainId}`" class="btn primary">View Chain</router-link>
+      <router-link :to="chainId ? '/marketplace/chains' : '/marketplace'" class="btn">Browse More</router-link>
     </template>
   </div>
 </template>
@@ -25,11 +26,13 @@ const authStore = useAuthStore()
 const loading = ref(true)
 const error = ref('')
 const agentId = ref(route.query.agent_id || '')
+const chainId = ref(route.query.chain_id || '')
 
 onMounted(async () => {
   const sid = route.query.session_id
   const aid = route.query.agent_id
-  if (!sid || !aid || !authStore.isAuthenticated) {
+  const cid = route.query.chain_id
+  if (!sid || (!aid && !cid) || !authStore.isAuthenticated) {
     loading.value = false
     if (!authStore.isAuthenticated) {
       error.value = 'Please log in to confirm your purchase.'
@@ -39,7 +42,11 @@ onMounted(async () => {
     return
   }
   try {
-    await api.post('/purchases/confirm-stripe', { session_id: sid, agent_id: parseInt(aid, 10) })
+    await api.post('/purchases/confirm-stripe', {
+      session_id: sid,
+      agent_id: aid ? parseInt(aid, 10) : undefined,
+      chain_id: cid ? parseInt(cid, 10) : undefined,
+    })
   } catch (e) {
     error.value = e.response?.data?.detail || 'Could not confirm purchase. Contact support if payment was charged.'
   } finally {

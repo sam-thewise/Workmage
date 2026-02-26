@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 const routes = [
   { path: '/', component: () => import('@/views/HomeView.vue'), name: 'home' },
   { path: '/marketplace', component: () => import('@/views/MarketplaceView.vue'), name: 'marketplace' },
+  { path: '/marketplace/chains', component: () => import('@/views/ChainMarketplaceView.vue'), name: 'chain-marketplace' },
+  { path: '/marketplace/chains/:id', component: () => import('@/views/ChainDetailView.vue'), name: 'chain-detail' },
   { path: '/agents/:id', component: () => import('@/views/AgentDetailView.vue'), name: 'agent-detail' },
   { path: '/purchase/success', component: () => import('@/views/PurchaseSuccessView.vue'), name: 'purchase-success' },
   { path: '/run/:id?', component: () => import('@/views/RunAgentView.vue'), name: 'run-agent', meta: { requiresAuth: true } },
@@ -24,6 +26,12 @@ const routes = [
     path: '/admin/review/:id',
     component: () => import('@/views/AdminReviewAgentView.vue'),
     name: 'admin-review',
+    meta: { requiresAuth: true, requiresAdminOrMod: true },
+  },
+  {
+    path: '/admin/review-chain/:id',
+    component: () => import('@/views/AdminReviewChainView.vue'),
+    name: 'admin-review-chain',
     meta: { requiresAuth: true, requiresAdminOrMod: true },
   },
   {

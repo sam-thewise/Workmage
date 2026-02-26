@@ -28,7 +28,8 @@ docker compose up -d
 
 - **Expert Dashboard**: Create agents with OASF manifest, validate, publish
 - **Marketplace**: Browse listed agents, filter by category
-- **Purchase**: One-time payment (Stripe for paid agents; free agents instant)
+- **Chain Marketplace**: Experts can publish chain listings and buyers can purchase full chains
+- **Purchase**: One-time payment (Stripe for paid agents/chains; free items instant)
 - **Run Agent**: Execute in Docker sandbox; BYOK or platform LLM; subscription rate limits
 - **API Keys**: Save OpenAI/Anthropic keys for BYOK runs
 - **Cost estimates**: Per-token estimates for platform-hosted runs
@@ -65,7 +66,12 @@ API_PUBLIC_URL=http://localhost:8000  # Must be reachable from user's browser
 
 ## Commission & Stripe Connect
 
-Agent sales use a **20% platform / 80% creator** split. Experts must link their Stripe account (Dashboard → Settings) before publishing paid agents. The agent setup page shows the commission breakdown when setting a price.
+Sales use a **20% platform / 80% creator** split.
+
+- **Agents**: 80% goes to the agent creator.
+- **Chains**: 80% is split across included agent owners (deterministic equal split with cent rounding).
+
+Experts must link Stripe (Dashboard -> Settings) before publishing paid listings.
 
 ## Stripe Webhooks (local testing)
 
@@ -83,7 +89,7 @@ The endpoint handles `checkout.session.completed` and records purchases (includi
 
 ## Admin & Moderation
 
-Experts submit agents for approval; they appear in the marketplace only after an admin or moderator approves them.
+Experts submit agents and chains for approval; they appear in the marketplace only after an admin or moderator approves them.
 
 ### Setup admin account
 
@@ -101,16 +107,16 @@ Admins can invite users to become moderators (Admin Panel → Moderator Invites)
 
 ### Moderation flow
 
-1. Expert publishes → agent status `pending_review`, awaits moderation
-2. Admin/Mod views pending agents at `/admin`, approves or rejects
-3. Approved → agent appears in marketplace
+1. Expert publishes -> listing status `pending_review`, awaits moderation
+2. Admin/Mod reviews pending agents/chains at `/admin`, approves or rejects
+3. Approved -> listing appears in marketplace
 4. Rejected → expert sees reason, can edit and resubmit
 
-Moderators can approve/reject agents and remove listed agents. Only admins can create moderator invites.
+Moderators can approve/reject/remove both agents and chains. Only admins can create moderator invites.
 
 ## Agent Chaining
 
-Create chains of agents so output from one feeds into the next. Use **Chains** (authenticated) to build a visual pipeline. Compatibility is enforced via `input_formats` and `output_formats` in manifests.
+Create chains of agents so output from one feeds into the next. Use **My Chains** (authenticated) to build and publish visual pipelines. Compatibility is enforced via `input_formats` and `output_formats` in manifests.
 
 Example chainable manifests are in `example-manifests/`:
 
@@ -119,6 +125,17 @@ Example chainable manifests are in `example-manifests/`:
 - `report-writer-manifest.json` – Structured report; receives from Web Summarizer
 
 See `example-manifests/README.md` for the full chain diagram.
+
+## Workflow Verification
+
+Manual smoke tests:
+
+1. Register expert account and create/publish an agent.
+2. Create a chain from listed agents, set price/category/tags, and publish.
+3. Verify chain appears in admin pending queue and not in public chain marketplace yet.
+4. Approve chain as admin/moderator, verify it appears in `/marketplace/chains`.
+5. Purchase chain as buyer and confirm Stripe redirect flow records purchase.
+6. Run the purchased chain as buyer without purchasing every individual agent.
 
 ## Project Structure
 

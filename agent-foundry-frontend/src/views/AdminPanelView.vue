@@ -11,6 +11,12 @@
         Pending Agents ({{ pendingCount }})
       </button>
       <button
+        :class="{ active: tab === 'pendingChains' }"
+        @click="tab = 'pendingChains'; loadPendingChains()"
+      >
+        Pending Chains ({{ pendingChainCount }})
+      </button>
+      <button
         v-if="authStore.user?.role === 'admin'"
         :class="{ active: tab === 'invites' }"
         @click="tab = 'invites'; loadInvites()"
@@ -37,6 +43,29 @@
             <router-link :to="`/admin/review/${a.id}`" class="btn small">Review</router-link>
             <button @click="approve(a.id)" class="btn small primary">Approve</button>
             <button @click="reject(a.id)" class="btn small danger">Reject</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending chains -->
+    <div v-show="tab === 'pendingChains'" class="section">
+      <div v-if="pendingChainsLoading" class="loading">Loading...</div>
+      <div v-else-if="pendingChains.length === 0" class="empty">No chains pending approval.</div>
+      <div v-else class="pending-list">
+        <div
+          v-for="c in pendingChains"
+          :key="c.id"
+          class="pending-card"
+        >
+          <div class="pending-info">
+            <strong>{{ c.name }}</strong>
+            <span class="meta">ID {{ c.id }} · Expert {{ c.expert_id }}</span>
+          </div>
+          <div class="pending-actions">
+            <router-link :to="`/admin/review-chain/${c.id}`" class="btn small">Review</router-link>
+            <button @click="approveChain(c.id)" class="btn small primary">Approve</button>
+            <button @click="rejectChain(c.id)" class="btn small danger">Reject</button>
           </div>
         </div>
       </div>
@@ -72,6 +101,8 @@ const tab = ref('pending')
 
 const pendingAgents = ref([])
 const pendingLoading = ref(true)
+const pendingChains = ref([])
+const pendingChainsLoading = ref(true)
 const invites = ref([])
 const invitesLoading = ref(false)
 const inviteEmail = ref('')
@@ -80,6 +111,7 @@ const inviteSuccess = ref('')
 const inviteError = ref('')
 
 const pendingCount = computed(() => pendingAgents.value.length)
+const pendingChainCount = computed(() => pendingChains.value.length)
 
 function formatDate(s) {
   if (!s) return ''
@@ -100,6 +132,18 @@ async function loadPending() {
   }
 }
 
+async function loadPendingChains() {
+  pendingChainsLoading.value = true
+  try {
+    const { data } = await api.get('/admin/chains/pending')
+    pendingChains.value = data || []
+  } catch (_e) {
+    pendingChains.value = []
+  } finally {
+    pendingChainsLoading.value = false
+  }
+}
+
 async function approve(id) {
   try {
     await api.post(`/admin/agents/${id}/approve`)
@@ -115,6 +159,26 @@ async function reject(id) {
   try {
     await api.post(`/admin/agents/${id}/reject`, { reason: reason || undefined })
     await loadPending()
+  } catch (e) {
+    alert(e.response?.data?.detail || 'Failed to reject')
+  }
+}
+
+async function approveChain(id) {
+  try {
+    await api.post(`/admin/chains/${id}/approve`)
+    await loadPendingChains()
+  } catch (e) {
+    alert(e.response?.data?.detail || 'Failed to approve')
+  }
+}
+
+async function rejectChain(id) {
+  const reason = prompt('Rejection reason (optional):')
+  if (reason === null) return
+  try {
+    await api.post(`/admin/chains/${id}/reject`, { reason: reason || undefined })
+    await loadPendingChains()
   } catch (e) {
     alert(e.response?.data?.detail || 'Failed to reject')
   }
@@ -152,6 +216,7 @@ async function createInvite() {
 
 onMounted(() => {
   loadPending()
+  loadPendingChains()
 })
 </script>
 

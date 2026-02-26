@@ -1,31 +1,27 @@
 <template>
-  <div class="agent-detail">
+  <div class="chain-detail">
     <div v-if="loading" class="loading">Loading...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
-    <template v-else-if="agent">
-      <router-link to="/marketplace" class="back">← Back to Marketplace</router-link>
-      <h1>{{ agent.name }}</h1>
-      <p class="description">{{ agent.description || 'No description' }}</p>
+    <template v-else-if="chain">
+      <router-link to="/marketplace/chains" class="back">← Back to Chain Marketplace</router-link>
+      <h1>{{ chain.name }}</h1>
+      <p class="description">{{ chain.description || 'No description' }}</p>
       <div class="meta">
-        <span class="price">${{ (agent.price_cents / 100).toFixed(2) }}</span>
-        <span v-if="agent.category" class="category">{{ agent.category }}</span>
-        <span v-if="agent.tags?.length" class="tags">{{ agent.tags.join(', ') }}</span>
+        <span class="price">${{ (chain.price_cents / 100).toFixed(2) }}</span>
+        <span v-if="chain.category" class="category">{{ chain.category }}</span>
+        <span v-if="chain.tags?.length" class="tags">{{ chain.tags.join(', ') }}</span>
       </div>
-      <div v-if="agent.manifest?.skills?.length" class="section">
-        <h3>Skills</h3>
+      <div class="section">
+        <h3>Included Agents ({{ chain.agents?.length || 0 }})</h3>
         <ul>
-          <li v-for="(s, i) in agent.manifest.skills" :key="i">
-            {{ typeof s === 'object' ? s.name : s }}
+          <li v-for="a in chain.agents || []" :key="a.id">
+            {{ a.name }}
           </li>
         </ul>
       </div>
-      <div v-if="agent.manifest?.domains?.length" class="section">
-        <h3>Domains</h3>
-        <ul>
-          <li v-for="(d, i) in agent.manifest.domains" :key="i">
-            {{ typeof d === 'object' ? d.name : d }}
-          </li>
-        </ul>
+      <div class="section">
+        <h3>Definition</h3>
+        <pre>{{ JSON.stringify(chain.definition || {}, null, 2) }}</pre>
       </div>
       <div class="actions">
         <template v-if="authStore.isAuthenticated">
@@ -35,11 +31,11 @@
             class="btn primary"
             :disabled="purchaseLoading"
           >
-            {{ agent.price_cents === 0 ? 'Get Free' : `Purchase $${(agent.price_cents / 100).toFixed(2)}` }}
+            {{ chain.price_cents === 0 ? 'Get Free' : `Purchase $${(chain.price_cents / 100).toFixed(2)}` }}
           </button>
           <template v-else-if="purchased">
             <span class="purchased">✓ Purchased</span>
-            <router-link :to="`/run/${agent?.id}`" class="btn primary">Run Agent</router-link>
+            <router-link :to="`/chains/${chain.id}/edit`" class="btn primary">Open Chain</router-link>
           </template>
         </template>
         <router-link v-else to="/login" class="btn primary">Login to Purchase</router-link>
@@ -50,37 +46,36 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 
 const route = useRoute()
-const router = useRouter()
 const authStore = useAuthStore()
-const agent = ref(null)
+const chain = ref(null)
 const loading = ref(true)
 const error = ref('')
 const purchased = ref(false)
 const purchaseLoading = ref(false)
 const purchasing = ref(false)
 
-async function loadAgent() {
+async function loadChain() {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await api.get(`/agents/${route.params.id}`)
-    agent.value = data
-  } catch (e) {
-    error.value = 'Agent not found'
+    const { data } = await api.get(`/chains/${route.params.id}`)
+    chain.value = data
+  } catch (_e) {
+    error.value = 'Chain not found'
   } finally {
     loading.value = false
   }
 }
 
 async function checkPurchase() {
-  if (!authStore.isAuthenticated || !agent.value) return
+  if (!authStore.isAuthenticated || !chain.value) return
   try {
-    const { data } = await api.get('/purchases/check', { params: { agent_id: agent.value.id } })
+    const { data } = await api.get('/purchases/check', { params: { chain_id: chain.value.id } })
     purchased.value = data.purchased
   } catch {
     purchased.value = false
@@ -88,10 +83,10 @@ async function checkPurchase() {
 }
 
 async function purchase() {
-  if (!agent.value) return
+  if (!chain.value) return
   purchaseLoading.value = true
   try {
-    const { data } = await api.post('/purchases', { agent_id: agent.value.id })
+    const { data } = await api.post('/purchases', { chain_id: chain.value.id })
     if (data.checkout_url) {
       window.location.href = data.checkout_url
       purchasing.value = true
@@ -105,12 +100,12 @@ async function purchase() {
   }
 }
 
-onMounted(() => loadAgent())
-watch([agent, () => authStore.isAuthenticated], () => checkPurchase(), { immediate: true })
+onMounted(() => loadChain())
+watch([chain, () => authStore.isAuthenticated], () => checkPurchase(), { immediate: true })
 </script>
 
 <style scoped>
-.agent-detail { max-width: 720px; }
+.chain-detail { max-width: 780px; }
 .back { color: #94a3b8; text-decoration: none; display: inline-block; margin-bottom: 1rem; }
 .back:hover { color: #7c3aed; }
 .description { color: #94a3b8; margin: 1rem 0; }
@@ -121,10 +116,11 @@ watch([agent, () => authStore.isAuthenticated], () => checkPurchase(), { immedia
 .section h3 { font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem; }
 .section ul { list-style: none; padding: 0; }
 .section li { padding: 0.25rem 0; color: #94a3b8; }
+pre { white-space: pre-wrap; background: #0f172a; padding: 1rem; border-radius: 8px; overflow-x: auto; }
 .btn { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; font-size: 1rem; }
 .btn.primary { background: #7c3aed; color: white; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .purchased { color: #10b981; font-weight: 500; }
-.actions { margin-top: 2rem; }
+.actions { margin-top: 2rem; display: flex; gap: 0.75rem; align-items: center; }
 .error { color: #f87171; }
 </style>

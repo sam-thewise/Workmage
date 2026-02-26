@@ -2,12 +2,24 @@
   <div class="chain-builder">
     <div class="toolbar">
       <input v-model="chainName" type="text" placeholder="Chain name" class="name-input" />
+      <input v-model="chainCategory" type="text" placeholder="Category" class="meta-input" />
+      <input v-model.number="chainPriceCents" type="number" min="0" placeholder="Price (cents)" class="meta-input" />
       <button @click="saveChain" class="btn primary" :disabled="saving || !chainName.trim()">
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
+      <button v-if="chainId && chainStatus !== 'pending_review' && chainStatus !== 'listed'" @click="publishChain" class="btn publish">
+        Publish
+      </button>
+      <button v-if="chainId && (chainStatus === 'pending_review' || chainStatus === 'listed')" @click="unpublishChain" class="btn secondary">
+        Unpublish
+      </button>
       <button v-if="chainId" @click="showRunModal = true" class="btn run">Run</button>
+      <span v-if="chainStatus" class="status" :class="chainStatus">{{ chainStatus }}</span>
+      <span v-if="rejectionReason" class="rejection">{{ rejectionReason }}</span>
       <span v-if="saveError" class="error">{{ saveError }}</span>
     </div>
+    <textarea v-model="chainDescription" rows="2" class="description-input" placeholder="Chain description"></textarea>
+    <input v-model="chainTagsText" type="text" class="tags-input" placeholder="Tags comma-separated (e.g. sales, research)" />
     <div class="builder-layout">
       <div class="palette">
         <h3>Agents</h3>
@@ -23,17 +35,17 @@
         </details>
         <ul class="agent-palette">
           <li
-            v-for="p in purchases"
-            :key="p.agent_id"
+            v-for="a in availableAgents"
+            :key="a.id"
             class="palette-item"
             draggable="true"
-            @dragstart="onDragStart($event, p)"
-            @click="addAgentNode(p)"
+            @dragstart="onDragStart($event, a)"
+            @click="addAgentNode(a)"
           >
-            {{ p.agent_name || `Agent #${p.agent_id}` }}
+            {{ a.name || `Agent #${a.id}` }}
           </li>
         </ul>
-        <p v-if="!purchases.length" class="empty">No agents. <router-link to="/marketplace">Purchase agents</router-link>.</p>
+        <p v-if="!availableAgents.length" class="empty">No listed agents available.</p>
       </div>
       <div class="canvas-wrap" @dragover.prevent @drop="onDrop">
         <VueFlow
@@ -95,15 +107,23 @@ import { VueFlow, Handle, ConnectionMode } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import FlowControls from '@/components/FlowControls.vue'
 import AgentNode from '@/components/AgentNode.vue'
+import { useAuthStore } from '@/stores/auth'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import api from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const chainId = ref(route.params.id && route.params.id !== 'new' ? parseInt(route.params.id, 10) : null)
 const chainName = ref('')
-const purchases = ref([])
+const chainDescription = ref('')
+const chainPriceCents = ref(0)
+const chainCategory = ref('')
+const chainTagsText = ref('')
+const chainStatus = ref('draft')
+const rejectionReason = ref('')
+const availableAgents = ref([])
 const nodes = ref([])
 const edges = ref([])
 const saving = ref(false)
@@ -122,12 +142,12 @@ const connectStartSource = ref(null)
 const nodeTypes = { agent: AgentNode }
 
 
-async function loadPurchases() {
+async function loadAvailableAgents() {
   try {
-    const { data } = await api.get('/purchases/my')
-    purchases.value = data || []
+    const { data } = await api.get('/agents')
+    availableAgents.value = data || []
   } catch {
-    purchases.value = []
+    availableAgents.value = []
   }
 }
 
@@ -136,6 +156,12 @@ async function loadChain() {
   try {
     const { data } = await api.get(`/chains/${chainId.value}`)
     chainName.value = data.name
+    chainDescription.value = data.description || ''
+    chainPriceCents.value = data.price_cents || 0
+    chainCategory.value = data.category || ''
+    chainTagsText.value = (data.tags || []).join(', ')
+    chainStatus.value = data.status || 'draft'
+    rejectionReason.value = data.rejection_reason || ''
     const defn = data.definition || {}
     const loadedEdges = defn.edges || []
     const targetIds = new Set(loadedEdges.map(e => e.target))
@@ -166,7 +192,7 @@ function getAgentLabel(agentId, agents) {
   return a ? a.name : `Agent #${agentId}`
 }
 
-function addAgentNode(p, position) {
+function addAgentNode(a, position) {
   const id = `n${++nodeIdCounter}`
   const defaultPos = position || { x: 100 + nodes.value.length * 200, y: 150 }
   const targetIds = new Set(edges.value.map(e => e.target))
@@ -175,7 +201,7 @@ function addAgentNode(p, position) {
     id,
     type: 'agent',
     position: defaultPos,
-    data: { label: p.agent_name || `Agent #${p.agent_id}`, agent_id: p.agent_id, isEntry },
+    data: { label: a.name || `Agent #${a.id}`, agent_id: a.id, isEntry },
     dragHandle: '.agent-node-content',
   }]
 }
@@ -188,8 +214,8 @@ function refreshEntryBadges() {
   }))
 }
 
-function onDragStart(ev, p) {
-  ev.dataTransfer.setData('application/json', JSON.stringify({ agent_id: p.agent_id, agent_name: p.agent_name }))
+function onDragStart(ev, a) {
+  ev.dataTransfer.setData('application/json', JSON.stringify({ agent_id: a.id, agent_name: a.name }))
 }
 
 function onDrop(ev) {
@@ -291,16 +317,52 @@ async function saveChain() {
   const defn = buildDefinition()
   try {
     if (chainId.value) {
-      await api.put(`/chains/${chainId.value}`, { name: chainName.value, definition: defn })
+      await api.put(`/chains/${chainId.value}`, {
+        name: chainName.value,
+        description: chainDescription.value || null,
+        price_cents: Math.max(0, Number(chainPriceCents.value) || 0),
+        category: chainCategory.value || null,
+        tags: chainTagsText.value ? chainTagsText.value.split(',').map((t) => t.trim()).filter(Boolean) : [],
+        definition: defn,
+      })
     } else {
-      const { data } = await api.post('/chains', { name: chainName.value, definition: defn })
+      const { data } = await api.post('/chains', {
+        name: chainName.value,
+        description: chainDescription.value || null,
+        price_cents: Math.max(0, Number(chainPriceCents.value) || 0),
+        category: chainCategory.value || null,
+        tags: chainTagsText.value ? chainTagsText.value.split(',').map((t) => t.trim()).filter(Boolean) : [],
+        definition: defn,
+      })
       chainId.value = data.id
+      chainStatus.value = data.status || 'draft'
       router.replace({ name: 'chain-edit', params: { id: String(data.id) } })
     }
   } catch (e) {
     saveError.value = e.response?.data?.detail?.message || e.response?.data?.detail || 'Save failed'
   } finally {
     saving.value = false
+  }
+}
+
+async function publishChain() {
+  if (!chainId.value) return
+  try {
+    await saveChain()
+    await api.patch(`/chains/${chainId.value}/publish`)
+    await loadChain()
+  } catch (e) {
+    saveError.value = e.response?.data?.detail || 'Failed to publish'
+  }
+}
+
+async function unpublishChain() {
+  if (!chainId.value) return
+  try {
+    await api.patch(`/chains/${chainId.value}/unpublish`)
+    await loadChain()
+  } catch (e) {
+    saveError.value = e.response?.data?.detail || 'Failed to unpublish'
   }
 }
 
@@ -345,8 +407,13 @@ async function pollRun(jobId) {
   }
 }
 
-onMounted(() => {
-  loadPurchases()
+onMounted(async () => {
+  if (!authStore.user) await authStore.fetchUser()
+  if (authStore.user?.role !== 'expert') {
+    router.replace('/dashboard')
+    return
+  }
+  loadAvailableAgents()
   loadChain()
 })
 watch(() => route.params.id, (id) => {
@@ -359,11 +426,21 @@ watch(() => route.params.id, (id) => {
 .chain-builder { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 400px; }
 .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
 .name-input { padding: 0.5rem; border-radius: 6px; border: 1px solid #444; background: #1a1a2e; color: #fff; width: 200px; }
+.meta-input { padding: 0.5rem; border-radius: 6px; border: 1px solid #444; background: #1a1a2e; color: #fff; width: 150px; }
+.description-input, .tags-input { width: 100%; margin-bottom: 0.75rem; padding: 0.5rem; border-radius: 6px; border: 1px solid #444; background: #1a1a2e; color: #fff; }
 .btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
 .btn.primary { background: #7c3aed; color: white; }
+.btn.publish { background: #0ea5e9; color: white; }
+.btn.secondary { background: #475569; color: white; }
 .btn.run { background: #10b981; color: white; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .error { color: #f87171; font-size: 0.9rem; }
+.status { padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.75rem; text-transform: lowercase; }
+.status.draft { background: #334155; }
+.status.pending_review { background: #92400e; color: #fde68a; }
+.status.listed { background: #065f46; color: #a7f3d0; }
+.status.rejected { background: #7f1d1d; color: #fecaca; }
+.rejection { color: #f87171; font-size: 0.8rem; }
 .builder-layout { display: flex; flex: 1; min-height: 0; gap: 1rem; }
 .palette { width: 200px; flex-shrink: 0; background: #1e293b; border-radius: 8px; padding: 1rem; border: 1px solid #334155; }
 .palette h3 { margin: 0 0 0.5rem; font-size: 1rem; }

@@ -28,20 +28,52 @@ class ChainDefinition(BaseModel):
 
 class ChainCreate(BaseModel):
     """Create chain request."""
+
     name: str
+    description: str | None = None
+    price_cents: int = Field(default=0, ge=0)
+    category: str | None = None
+    tags: list[str] = Field(default_factory=list)
     definition: dict[str, Any]
 
 
 class ChainUpdate(BaseModel):
     """Update chain request."""
+
     name: str | None = None
+    description: str | None = None
+    price_cents: int | None = Field(default=None, ge=0)
+    category: str | None = None
+    tags: list[str] | None = None
     definition: dict[str, Any] | None = None
+
+
+class ChainListResponse(BaseModel):
+    """Marketplace/list chain response."""
+
+    id: int
+    name: str
+    description: str | None = None
+    price_cents: int
+    status: str
+    approval_status: str | None = None
+    category: str | None = None
+    created_at: str | None
+    updated_at: str | None = None
 
 
 class ChainResponse(BaseModel):
     """Chain response with optional agent details."""
+
     id: int
     name: str
+    description: str | None = None
+    price_cents: int = 0
+    status: str = "draft"
+    approval_status: str | None = None
+    category: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    rejection_reason: str | None = None
     definition: dict[str, Any]
     created_at: str | None
     updated_at: str | None

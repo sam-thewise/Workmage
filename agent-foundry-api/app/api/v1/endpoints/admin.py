@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_admin_or_moderator, get_admin
 from app.db.session import get_db
 from app.models.agent import Agent, AgentStatus
+from app.models.chain import AgentChain, ChainStatus
 from app.models.user import User, UserRole
 from app.models.moderator_invite import ModeratorInvite
 
@@ -31,7 +32,55 @@ async def list_pending_agents(
         .order_by(Agent.created_at.desc())
     )
     agents = result.scalars().all()
-    return [{"id": a.id, "name": a.name, "expert_id": a.expert_id, "created_at": a.created_at}]
+    return [{"id": a.id, "name": a.name, "expert_id": a.expert_id, "created_at": a.created_at} for a in agents]
+
+
+@router.get("/chains/pending")
+async def list_pending_chains(
+    user: User = Depends(get_admin_or_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """List chains awaiting moderation."""
+    result = await db.execute(
+        select(AgentChain)
+        .where(
+            AgentChain.status == ChainStatus.PENDING_REVIEW.value,
+            AgentChain.approval_status == "pending",
+        )
+        .order_by(AgentChain.created_at.desc())
+    )
+    chains = result.scalars().all()
+    return [
+        {"id": c.id, "name": c.name, "expert_id": c.expert_id, "created_at": c.created_at}
+        for c in chains
+    ]
+
+
+@router.get("/chains/{chain_id}")
+async def get_chain_for_review(
+    chain_id: int,
+    user: User = Depends(get_admin_or_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full chain details for moderation review."""
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
+    chain = result.scalar_one_or_none()
+    if not chain:
+        raise HTTPException(404, "Chain not found")
+    return {
+        "id": chain.id,
+        "name": chain.name,
+        "description": chain.description,
+        "definition": chain.definition,
+        "price_cents": chain.price_cents,
+        "status": chain.status,
+        "approval_status": chain.approval_status,
+        "expert_id": chain.expert_id,
+        "category": chain.category,
+        "tags": chain.tags,
+        "rejection_reason": chain.rejection_reason,
+        "created_at": chain.created_at,
+    }
 
 
 @router.get("/agents/{agent_id}")
@@ -127,6 +176,72 @@ async def remove_listed_agent(
     agent.moderated_at = datetime.now(timezone.utc)
     agent.moderated_by_id = user.id
     agent.rejection_reason = body.reason or "Removed by moderator"
+    await db.commit()
+    return {"status": "removed"}
+
+
+@router.post("/chains/{chain_id}/approve")
+async def approve_chain(
+    chain_id: int,
+    user: User = Depends(get_admin_or_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve chain for listing."""
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
+    chain = result.scalar_one_or_none()
+    if not chain:
+        raise HTTPException(404, "Chain not found")
+    if chain.status != ChainStatus.PENDING_REVIEW.value or chain.approval_status != "pending":
+        raise HTTPException(400, "Chain is not pending approval")
+    chain.status = ChainStatus.LISTED.value
+    chain.approval_status = "approved"
+    chain.moderated_at = datetime.now(timezone.utc)
+    chain.moderated_by_id = user.id
+    chain.rejection_reason = None
+    await db.commit()
+    return {"status": "approved"}
+
+
+@router.post("/chains/{chain_id}/reject")
+async def reject_chain(
+    chain_id: int,
+    body: ApproveRejectBody = ApproveRejectBody(),
+    user: User = Depends(get_admin_or_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject chain; expert can fix and resubmit."""
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
+    chain = result.scalar_one_or_none()
+    if not chain:
+        raise HTTPException(404, "Chain not found")
+    if chain.status != ChainStatus.PENDING_REVIEW.value or chain.approval_status != "pending":
+        raise HTTPException(400, "Chain is not pending approval")
+    chain.status = ChainStatus.REJECTED.value
+    chain.approval_status = "rejected"
+    chain.moderated_at = datetime.now(timezone.utc)
+    chain.moderated_by_id = user.id
+    chain.rejection_reason = body.reason
+    await db.commit()
+    return {"status": "rejected"}
+
+
+@router.post("/chains/{chain_id}/remove")
+async def remove_listed_chain(
+    chain_id: int,
+    body: ApproveRejectBody = ApproveRejectBody(),
+    user: User = Depends(get_admin_or_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove an already-listed chain."""
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
+    chain = result.scalar_one_or_none()
+    if not chain:
+        raise HTTPException(404, "Chain not found")
+    chain.status = ChainStatus.REJECTED.value
+    chain.approval_status = "rejected"
+    chain.moderated_at = datetime.now(timezone.utc)
+    chain.moderated_by_id = user.id
+    chain.rejection_reason = body.reason or "Removed by moderator"
     await db.commit()
     return {"status": "removed"}
 
