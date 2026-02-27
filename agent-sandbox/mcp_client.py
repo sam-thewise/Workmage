@@ -1,33 +1,177 @@
-"""MCP client helper - connect to MCP servers declared in manifest and expose tools."""
+"""MCP client helper for manifest-declared servers.
+
+This module provides:
+1) server configuration extraction from manifests,
+2) MCP tool discovery in OpenAI function format, and
+3) resilient MCP tool invocation (retry + timeout).
+"""
+from __future__ import annotations
+
+import json
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
 from typing import Any
 
+DEFAULT_TIMEOUT_SEC = 12
+DEFAULT_RETRIES = 2
+DEFAULT_BACKOFF_SEC = 0.5
 
-def get_mcp_tools_from_manifest(manifest: dict) -> list[dict[str, Any]]:
+
+@dataclass
+class MCPServerConfig:
+    """Validated MCP server config from manifest module."""
+
+    key: str
+    name: str
+    transport: str
+    url: str
+    timeout_sec: int = DEFAULT_TIMEOUT_SEC
+    retries: int = DEFAULT_RETRIES
+    headers: dict[str, str] | None = None
+
+
+def extract_mcp_servers(manifest: dict[str, Any]) -> dict[str, MCPServerConfig]:
+    """Extract MCP server definitions keyed by manifest module key.
+
+    Supported manifest shape:
+    {
+      "modules": [
+        {
+          "type": "mcp",
+          "name": "avalanche_docs",
+          "transport": "http",
+          "url": "https://build.avax.network/api/mcp",
+          "timeout_sec": 15,
+          "retries": 2,
+          "headers": {"Authorization": "..."}
+        }
+      ]
+    }
     """
-    Extract MCP server config from manifest modules and return tool definitions.
-    Modules may declare MCP servers; this returns OpenAI-compatible tool schemas
-    for use with LiteLLM function calling.
-    """
-    tools: list[dict[str, Any]] = []
+    servers: dict[str, MCPServerConfig] = {}
     modules = manifest.get("modules") or []
-    for mod in modules:
+    for idx, mod in enumerate(modules):
         if not isinstance(mod, dict):
             continue
-        name = mod.get("name", "")
-        if "mcp" in name.lower() or mod.get("type") == "mcp":
-            # MCP server config could have: url, transport (stdio/sse)
-            # For MVP we return empty - full integration would:
-            # 1. Connect to MCP server via appropriate transport
-            # 2. Call list_tools()
-            # 3. Convert to OpenAI function format
-            # Placeholder for future: tools.extend(_fetch_mcp_tools(mod))
-            pass
+        if mod.get("type") != "mcp":
+            continue
+        key = str(mod.get("key") or mod.get("name") or f"mcp_{idx}")
+        transport = str(mod.get("transport") or "http").lower()
+        url = str(mod.get("url") or "").strip()
+        if not url:
+            continue
+        servers[key] = MCPServerConfig(
+            key=key,
+            name=str(mod.get("name") or key),
+            transport=transport,
+            url=url,
+            timeout_sec=int(mod.get("timeout_sec") or DEFAULT_TIMEOUT_SEC),
+            retries=max(0, int(mod.get("retries") or DEFAULT_RETRIES)),
+            headers=mod.get("headers") if isinstance(mod.get("headers"), dict) else None,
+        )
+    return servers
+
+
+def _jsonrpc_call(server: MCPServerConfig, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Call JSON-RPC endpoint with bounded retries and timeout."""
+    payload = {"jsonrpc": "2.0", "id": int(time.time() * 1000), "method": method, "params": params}
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if server.headers:
+        headers.update({str(k): str(v) for k, v in server.headers.items()})
+
+    attempt = 0
+    while True:
+        try:
+            req = urllib.request.Request(server.url, data=body, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=server.timeout_sec) as response:
+                raw = response.read().decode("utf-8")
+                data = json.loads(raw) if raw else {}
+                if data.get("error"):
+                    raise RuntimeError(f"MCP error: {data['error']}")
+                return data.get("result") or {}
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+            if attempt >= server.retries:
+                raise RuntimeError(f"MCP call failed after retries ({server.name}): {exc}") from exc
+            attempt += 1
+            time.sleep(DEFAULT_BACKOFF_SEC * attempt)
+
+
+def _normalize_tool_schema(tool: dict[str, Any], server_key: str, server_name: str) -> dict[str, Any]:
+    """Convert MCP tool descriptor to OpenAI function schema."""
+    name = str(tool.get("name") or "")
+    if not name:
+        raise ValueError("MCP tool is missing name")
+    input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
+    return {
+        "name": f"mcp__{server_key}__{name}",
+        "description": str(tool.get("description") or f"MCP tool `{name}` from `{server_name}`"),
+        "parameters": input_schema or {"type": "object", "properties": {}},
+    }
+
+
+def get_mcp_tools_from_manifest(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Discover tools from all MCP modules declared in the manifest."""
+    tools: list[dict[str, Any]] = []
+    servers = extract_mcp_servers(manifest)
+    for key, server in servers.items():
+        if server.transport != "http":
+            # The first release supports HTTP JSON-RPC MCP endpoints.
+            continue
+        try:
+            result = _jsonrpc_call(server, "tools/list", {})
+            server_tools = result.get("tools") if isinstance(result, dict) else []
+            if isinstance(server_tools, list):
+                for tool in server_tools:
+                    if isinstance(tool, dict):
+                        tools.append(_normalize_tool_schema(tool, key, server.name))
+        except Exception:
+            # Discovery failures are non-fatal for the run. Tool call will fail loudly if invoked.
+            continue
     return tools
 
 
-def execute_mcp_tool(server_config: dict, tool_name: str, arguments: dict) -> str:
-    """
-    Execute an MCP tool. Placeholder for full integration.
-    Would connect to server, call tool, return result.
-    """
-    return f"MCP tool {tool_name} execution not yet implemented"
+def parse_mcp_tool_name(tool_name: str) -> tuple[str, str] | None:
+    """Parse namespaced tool name `mcp__{server_key}__{tool}`."""
+    if not tool_name.startswith("mcp__"):
+        return None
+    parts = tool_name.split("__", 2)
+    if len(parts) != 3:
+        return None
+    return parts[1], parts[2]
+
+
+def execute_mcp_tool(manifest: dict[str, Any], tool_name: str, arguments: dict[str, Any]) -> str:
+    """Execute a namespaced MCP tool and return normalized text output."""
+    parsed = parse_mcp_tool_name(tool_name)
+    if not parsed:
+        return "Invalid MCP tool name format"
+    server_key, inner_tool_name = parsed
+    servers = extract_mcp_servers(manifest)
+    server = servers.get(server_key)
+    if not server:
+        return f"MCP server `{server_key}` not found in manifest"
+    if server.transport != "http":
+        return f"MCP transport `{server.transport}` not supported yet"
+
+    try:
+        result = _jsonrpc_call(
+            server,
+            "tools/call",
+            {"name": inner_tool_name, "arguments": arguments or {}},
+        )
+    except Exception as exc:
+        return f"MCP execution failed: {exc}"
+
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text_parts.append(str(item.get("text") or ""))
+            elif isinstance(item, dict):
+                text_parts.append(json.dumps(item))
+        return "\n".join([p for p in text_parts if p]).strip() or json.dumps(result)
+    return json.dumps(result)

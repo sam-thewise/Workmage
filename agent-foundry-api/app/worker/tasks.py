@@ -145,3 +145,79 @@ def run_agent_task(
                 sub.runs_used += 1
                 db.commit()
     return {"status": "completed", "content": content, "usage": usage}
+
+
+@celery_app.task(bind=True)
+def run_reference_liquidity_pipeline(
+    self,
+    network: str = "avalanche",
+    from_block: str = "latest",
+    to_block: str = "latest",
+    token_contract: str | None = None,
+) -> dict:
+    """Reference capability: scan liquidity logs and optionally run source audit."""
+    import asyncio
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.config import settings
+    from app.models.action_runtime import ActionAnalysis, ActionSignal
+    from app.services.contract_audit import run_static_audit_checks
+    from app.services.contract_source import fetch_verified_source
+    from app.services.liquidity_watcher import default_factory_addresses, fetch_pair_created_logs
+    from app.worker.orchestration import make_checkpoint_key, normalize_job_result
+
+    async def _run() -> dict:
+        rpc_url = settings.AVALANCHE_FUJI_RPC_URL if network == "fuji" else settings.AVALANCHE_RPC_URL
+        if not rpc_url:
+            return normalize_job_result("error", error=f"Missing RPC URL for network `{network}`")
+        factories = default_factory_addresses()
+        if not factories:
+            return normalize_job_result("error", error="No ACTIONS_FACTORY_ADDRESSES configured")
+        logs = await fetch_pair_created_logs(
+            rpc_url=rpc_url,
+            factory_addresses=factories,
+            from_block=from_block,
+            to_block=to_block,
+        )
+        source_payload = None
+        audit_result = None
+        if token_contract:
+            source_payload = await fetch_verified_source(token_contract)
+            audit_result = run_static_audit_checks(source_payload)
+        return normalize_job_result(
+            "completed",
+            data={
+                "checkpoint_key": make_checkpoint_key(
+                    "reference_liquidity_pipeline",
+                    {"network": network, "from_block": from_block, "to_block": to_block, "token_contract": token_contract},
+                ),
+                "logs": logs[:50],
+                "source": source_payload,
+                "audit": audit_result,
+            },
+        )
+
+    result = asyncio.run(_run())
+    engine = create_engine(settings.DATABASE_SYNC_URL)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    with Session() as db:
+        sig = ActionSignal(
+            source="reference_liquidity_watcher",
+            network=network,
+            signal_type="pair_created",
+            payload={"result_status": result.get("status"), "log_count": len(result.get("data", {}).get("logs", []))},
+        )
+        db.add(sig)
+        db.flush()
+        db.add(
+            ActionAnalysis(
+                signal_id=sig.id,
+                analyzer="reference_liquidity_pipeline",
+                status=result.get("status", "completed"),
+                result=result,
+                summary="Reference liquidity scan pipeline output",
+            )
+        )
+        db.commit()
+    return result

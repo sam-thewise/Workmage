@@ -1,0 +1,20 @@
+{
+  "name": "workmage-agent-nft",
+  "version": "1.0.0",
+  "description": "Shared agent identity NFT contract for Workmage (deploy + verify on Snowscan)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:fuji": "hardhat run scripts/deploy.js --network fuji",
+    "deploy:avalanche": "hardhat run scripts/deploy.js --network avalanche",
+    "verify:fuji": "hardhat verify --network fuji",
+    "verify:avalanche": "hardhat verify --network avalanche"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.0.0",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0"
+  }
+}

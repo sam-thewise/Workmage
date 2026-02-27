@@ -1,0 +1,51 @@
+{
+  "name": "Avalanche Action Infrastructure Demo",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Demonstrates MCP tools + action capability modules for Avalanche workflows.",
+  "authors": ["Workmage"],
+  "created_at": "2026-02-27T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain", "application/json"],
+  "skills": [
+    {"name": "blockchain/event_monitoring", "id": 3001},
+    {"name": "blockchain/smart_contract_analysis", "id": 3002}
+  ],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "avalanche_docs",
+      "transport": "http",
+      "url": "https://build.avax.network/api/mcp",
+      "timeout_sec": 15,
+      "retries": 2
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "liquidity-watch-reference",
+      "module_type": "watcher",
+      "permissions": ["read", "analyze"]
+    },
+    {
+      "name": "audit-reference",
+      "module_type": "analyzer",
+      "permissions": ["analyze"]
+    },
+    {
+      "name": "execution-reference",
+      "module_type": "executor",
+      "permissions": ["execute"]
+    }
+  ],
+  "execution_policy": {
+    "simulation_required": true,
+    "allow_unverified_contracts": false,
+    "max_spend_wei": 100000000000000000,
+    "max_gas_wei": 3000000000000000,
+    "cooldown_seconds": 60,
+    "allowed_tokens": [],
+    "allowed_routers": [],
+    "min_trust_score": 20
+  }
+}

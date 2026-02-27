@@ -5,7 +5,7 @@ import os
 import sys
 
 # MCP tools from manifest can be wired here when modules declare MCP servers
-from mcp_client import get_mcp_tools_from_manifest
+from mcp_client import execute_mcp_tool, get_mcp_tools_from_manifest, parse_mcp_tool_name
 
 INPUT_DIR = os.environ.get("AGENT_INPUT", "/input")
 OUTPUT_DIR = os.environ.get("AGENT_OUTPUT", "/output")
@@ -42,18 +42,68 @@ def main():
 
     try:
         import litellm
+
         mcp_tools = get_mcp_tools_from_manifest(manifest)
-        kwargs = {"model": model, "messages": messages}
-        if api_key:
-            kwargs["api_key"] = api_key
-        if mcp_tools:
-            kwargs["tools"] = [{"type": "function", "function": t} for t in mcp_tools]
-        response = litellm.completion(**kwargs)
-        content = response.choices[0].message.content if response.choices else ""
-        usage = getattr(response, "usage", None)
-        usage_dict = None
-        if usage:
-            usage_dict = {"prompt_tokens": getattr(usage, "prompt_tokens", 0), "completion_tokens": getattr(usage, "completion_tokens", 0)}
+        usage_dict = {"prompt_tokens": 0, "completion_tokens": 0}
+        content = ""
+        max_rounds = 8
+
+        for _ in range(max_rounds):
+            kwargs = {"model": model, "messages": messages}
+            if api_key:
+                kwargs["api_key"] = api_key
+            if mcp_tools:
+                kwargs["tools"] = [{"type": "function", "function": t} for t in mcp_tools]
+            response = litellm.completion(**kwargs)
+            if not response.choices:
+                break
+
+            message = response.choices[0].message
+            usage = getattr(response, "usage", None)
+            if usage:
+                usage_dict["prompt_tokens"] += int(getattr(usage, "prompt_tokens", 0) or 0)
+                usage_dict["completion_tokens"] += int(getattr(usage, "completion_tokens", 0) or 0)
+
+            assistant_content = message.content or ""
+            tool_calls = getattr(message, "tool_calls", None) or []
+
+            if not tool_calls:
+                content = assistant_content
+                break
+
+            assistant_message = {"role": "assistant", "content": assistant_content}
+            if tool_calls:
+                assistant_message["tool_calls"] = [tc.model_dump() if hasattr(tc, "model_dump") else tc for tc in tool_calls]
+            messages.append(assistant_message)
+
+            for tc in tool_calls:
+                fn = tc.function if hasattr(tc, "function") else (tc.get("function") if isinstance(tc, dict) else None)
+                call_id = tc.id if hasattr(tc, "id") else (tc.get("id") if isinstance(tc, dict) else "")
+                fn_name = fn.name if hasattr(fn, "name") else (fn.get("name") if isinstance(fn, dict) else "")
+                raw_args = fn.arguments if hasattr(fn, "arguments") else (fn.get("arguments") if isinstance(fn, dict) else "{}")
+                try:
+                    parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                except Exception:
+                    parsed_args = {}
+
+                if parse_mcp_tool_name(fn_name):
+                    tool_result = execute_mcp_tool(manifest, fn_name, parsed_args)
+                else:
+                    tool_result = f"Tool `{fn_name}` not registered in this runtime"
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "name": fn_name,
+                        "content": tool_result,
+                    }
+                )
+        else:
+            content = "Error: tool-calling iteration limit reached"
+
+        if usage_dict["prompt_tokens"] == 0 and usage_dict["completion_tokens"] == 0:
+            usage_dict = None
     except Exception as e:
         content = f"Error: {str(e)}"
         usage_dict = None

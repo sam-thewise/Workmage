@@ -5,6 +5,7 @@ from typing import Any
 import yaml
 
 OASF_REQUIRED = {"name", "version", "schema_version", "description", "authors", "created_at", "skills"}
+ALLOWED_ACTIONS = {"read", "analyze", "execute"}
 
 
 class ManifestValidationError(Exception):
@@ -64,10 +65,102 @@ def validate_oasf_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         ):
             errors.append("'output_formats' must be a list of strings")
 
+    _validate_modules(manifest.get("modules"), errors)
+    _validate_capabilities(manifest.get("capabilities"), errors)
+    _validate_execution_policy(manifest.get("execution_policy"), errors)
+
     if errors:
         raise ManifestValidationError("Manifest validation failed", errors)
 
     return manifest
+
+
+def _validate_modules(modules: Any, errors: list[str]) -> None:
+    if modules is None:
+        return
+    if not isinstance(modules, list):
+        errors.append("'modules' must be a list")
+        return
+    for idx, mod in enumerate(modules):
+        if not isinstance(mod, dict):
+            errors.append(f"'modules[{idx}]' must be an object")
+            continue
+        mtype = str(mod.get("type") or "").lower()
+        if not mtype:
+            errors.append(f"'modules[{idx}].type' is required")
+            continue
+        if mtype == "mcp":
+            _validate_mcp_module(mod, idx, errors)
+
+
+def _validate_mcp_module(mod: dict[str, Any], idx: int, errors: list[str]) -> None:
+    if not mod.get("name"):
+        errors.append(f"'modules[{idx}].name' is required for mcp modules")
+    transport = str(mod.get("transport") or "http").lower()
+    if transport not in {"http", "sse", "stdio"}:
+        errors.append(f"'modules[{idx}].transport' must be one of http|sse|stdio")
+    url = mod.get("url")
+    if transport in {"http", "sse"}:
+        if not isinstance(url, str) or not url.strip():
+            errors.append(f"'modules[{idx}].url' is required for {transport} transport")
+    elif transport == "stdio":
+        command = mod.get("command")
+        if not isinstance(command, str) or not command.strip():
+            errors.append(f"'modules[{idx}].command' is required for stdio transport")
+    timeout_sec = mod.get("timeout_sec")
+    if timeout_sec is not None and (not isinstance(timeout_sec, int) or timeout_sec <= 0):
+        errors.append(f"'modules[{idx}].timeout_sec' must be a positive integer")
+    retries = mod.get("retries")
+    if retries is not None and (not isinstance(retries, int) or retries < 0):
+        errors.append(f"'modules[{idx}].retries' must be a non-negative integer")
+
+
+def _validate_capabilities(capabilities: Any, errors: list[str]) -> None:
+    if capabilities is None:
+        return
+    if not isinstance(capabilities, list):
+        errors.append("'capabilities' must be a list")
+        return
+    for idx, capability in enumerate(capabilities):
+        if not isinstance(capability, dict):
+            errors.append(f"'capabilities[{idx}]' must be an object")
+            continue
+        if not capability.get("name"):
+            errors.append(f"'capabilities[{idx}].name' is required")
+        module_type = capability.get("module_type")
+        if module_type is not None and not isinstance(module_type, str):
+            errors.append(f"'capabilities[{idx}].module_type' must be a string")
+        permissions = capability.get("permissions")
+        if permissions is not None:
+            if not isinstance(permissions, list) or not all(isinstance(x, str) for x in permissions):
+                errors.append(f"'capabilities[{idx}].permissions' must be a list of strings")
+            elif not set(permissions).issubset(ALLOWED_ACTIONS):
+                errors.append(
+                    f"'capabilities[{idx}].permissions' supports only: {', '.join(sorted(ALLOWED_ACTIONS))}"
+                )
+
+
+def _validate_execution_policy(execution_policy: Any, errors: list[str]) -> None:
+    if execution_policy is None:
+        return
+    if not isinstance(execution_policy, dict):
+        errors.append("'execution_policy' must be an object")
+        return
+    bool_keys = ("simulation_required", "allow_unverified_contracts")
+    for key in bool_keys:
+        val = execution_policy.get(key)
+        if val is not None and not isinstance(val, bool):
+            errors.append(f"'execution_policy.{key}' must be a boolean")
+    int_keys = ("max_spend_wei", "max_gas_wei", "cooldown_seconds")
+    for key in int_keys:
+        val = execution_policy.get(key)
+        if val is not None and (not isinstance(val, int) or val < 0):
+            errors.append(f"'execution_policy.{key}' must be a non-negative integer")
+    for key in ("allowed_tokens", "allowed_routers"):
+        val = execution_policy.get(key)
+        if val is not None:
+            if not isinstance(val, list) or not all(isinstance(x, str) for x in val):
+                errors.append(f"'execution_policy.{key}' must be a list of strings")
 
 
 def extract_manifest_metadata(manifest: dict[str, Any]) -> dict[str, Any]:

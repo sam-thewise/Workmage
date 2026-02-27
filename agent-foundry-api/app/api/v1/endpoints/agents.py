@@ -83,6 +83,57 @@ async def get_agent(
     return agent
 
 
+def _build_agent_uri_services(agent_id: int) -> list[dict]:
+    """Build ERC-8004 services array for this agent (API, MCP endpoint)."""
+    from app.core.config import settings
+
+    base = (settings.API_PUBLIC_URL or "").rstrip("/")
+    services = []
+    if base:
+        services.append({"type": "api", "url": f"{base}/api/v1/agents/{agent_id}"})
+        services.append({"type": "agent-uri", "url": f"{base}/api/v1/agents/{agent_id}/agent-uri"})
+    # MCP URL if we expose one per agent (optional)
+    if base:
+        services.append({"type": "mcp", "url": f"{base}/api/v1/agents/{agent_id}/mcp"})
+    return services
+
+
+@router.get("/{agent_id}/agent-uri")
+async def get_agent_uri(
+    agent_id: int,
+    user: User | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """ERC-8004 AgentURI metadata for on-chain identity (name, description, image, services). Public for listed agents."""
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    if agent.status in (AgentStatus.DRAFT.value, AgentStatus.PENDING_REVIEW.value, AgentStatus.REJECTED.value):
+        if not user or user.id != agent.expert_id:
+            raise HTTPException(404, "Agent not found")
+
+    manifest = agent.manifest or {}
+    # Optional image from manifest (avatar, image, icon)
+    image = (
+        manifest.get("avatar")
+        or manifest.get("image")
+        or (manifest.get("metadata") or {}).get("image")
+        or (manifest.get("metadata") or {}).get("avatar")
+    )
+    if isinstance(image, dict):
+        image = image.get("url") or image.get("href")
+    if not isinstance(image, str):
+        image = None
+
+    return {
+        "name": agent.name,
+        "description": agent.description or "",
+        "image": image,
+        "services": _build_agent_uri_services(agent_id),
+    }
+
+
 @router.post("/", response_model=AgentResponse)
 async def create_agent(
     payload: AgentCreate,

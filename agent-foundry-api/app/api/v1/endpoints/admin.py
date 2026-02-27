@@ -13,6 +13,7 @@ from app.models.agent import Agent, AgentStatus
 from app.models.chain import AgentChain, ChainStatus
 from app.models.user import User, UserRole
 from app.models.moderator_invite import ModeratorInvite
+from app.models.agent_nft_contract import AgentNftContract
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -337,3 +338,127 @@ async def accept_moderator_invite(
     user.role = UserRole.MODERATOR
     await db.commit()
     return {"status": "accepted", "role": "moderator"}
+
+
+# --- Shared agent NFT contract (admin only) ---
+
+
+class RegisterAgentNftContractRequest(BaseModel):
+    network: str  # e.g. fuji, avalanche
+    chain_id: int
+    contract_address: str
+    deploy_tx_hash: str | None = None
+    contract_metadata: dict = {}
+
+
+class VerifyAgentNftContractRequest(BaseModel):
+    source_code: str
+    contract_name: str = "WorkmageAgentNFT"
+    compiler_version: str = "v0.8.20+commit.a1b79de6"
+    optimization_used: bool = False
+    runs: int = 200
+
+
+@router.get("/agent-nft-contracts")
+async def list_agent_nft_contracts(
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List registered shared agent NFT contracts per network. Admin only."""
+    result = await db.execute(select(AgentNftContract).order_by(AgentNftContract.network))
+    rows = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "network": r.network,
+            "chain_id": r.chain_id,
+            "contract_address": r.contract_address,
+            "deploy_tx_hash": r.deploy_tx_hash,
+            "verified_at": r.verified_at.isoformat() if r.verified_at else None,
+            "verification_guid": r.verification_guid,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/agent-nft-contracts")
+async def register_agent_nft_contract(
+    payload: RegisterAgentNftContractRequest,
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register a deployed shared agent NFT contract (after deploy from contracts/agent-nft). Admin only."""
+    result = await db.execute(select(AgentNftContract).where(AgentNftContract.network == payload.network))
+    existing = result.scalar_one_or_none()
+    if existing:
+        existing.chain_id = payload.chain_id
+        existing.contract_address = payload.contract_address.strip()
+        existing.deploy_tx_hash = payload.deploy_tx_hash
+        existing.contract_metadata = payload.contract_metadata or {}
+        await db.commit()
+        await db.refresh(existing)
+        return {"id": existing.id, "network": existing.network, "contract_address": existing.contract_address, "updated": True}
+    record = AgentNftContract(
+        network=payload.network,
+        chain_id=payload.chain_id,
+        contract_address=payload.contract_address.strip(),
+        deploy_tx_hash=payload.deploy_tx_hash,
+        contract_metadata=payload.contract_metadata or {},
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return {"id": record.id, "network": record.network, "contract_address": record.contract_address}
+
+
+@router.post("/agent-nft-contracts/{network}/verify")
+async def verify_agent_nft_contract(
+    network: str,
+    payload: VerifyAgentNftContractRequest,
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit contract source to Snowtrace for verification. Admin only. Poll checkverifystatus or re-call to update verified_at."""
+    from app.services.contract_verification import submit_verification
+
+    result = await db.execute(select(AgentNftContract).where(AgentNftContract.network == network))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, f"No agent NFT contract registered for network {network}")
+    out = await submit_verification(
+        network=network,
+        contract_address=record.contract_address,
+        source_code=payload.source_code,
+        contract_name=payload.contract_name,
+        compiler_version=payload.compiler_version,
+        optimization_used=payload.optimization_used,
+        runs=payload.runs,
+    )
+    if out.get("ok") and out.get("guid"):
+        record.verification_guid = out["guid"]
+        await db.commit()
+    return out
+
+
+@router.post("/agent-nft-contracts/{network}/verify-status")
+async def check_agent_nft_contract_verification_status(
+    network: str,
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check verification status for the contract; if verified, set verified_at. Admin only."""
+    from app.services.contract_verification import check_verification_status
+
+    result = await db.execute(select(AgentNftContract).where(AgentNftContract.network == network))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, f"No agent NFT contract registered for network {network}")
+    if not record.verification_guid:
+        return {"ok": False, "error": "No verification guid; submit verify first"}
+    out = await check_verification_status(network=network, guid=record.verification_guid)
+    if out.get("ok") and out.get("verified"):
+        record.verified_at = datetime.now(timezone.utc)
+        record.verification_guid = None
+        await db.commit()
+    return out

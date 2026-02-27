@@ -22,6 +22,12 @@ output: text/plain   input: text/plain   input: text/plain
 | `url-suggester-manifest.json` | text/plain | text/plain, text/url | **Web Summarizer** (accepts text/plain, text/url) |
 | `demo-agent-manifest.json` (root) | text/plain, text/url | text/plain | **URL Suggester** (outputs text/plain), **Report Writer** (accepts text/plain) |
 | `report-writer-manifest.json` | text/plain | text/plain, application/json | **Web Summarizer** (outputs text/plain) |
+| `avalanche-action-agent.json` | text/plain | text/plain, application/json | Demonstrates MCP + capability modules + execution policy |
+| `web-summarizer-mcp-manifest.json` | text/plain, text/url | text/plain | Web Summarizer using the **built-in** MCP scrape tool (token-efficient markdown at `API_BASE/api/v1/mcp`) |
+
+### Web scraping tool (token-efficient markdown)
+
+The API provides an MCP endpoint at `/api/v1/mcp` with one tool: `scrape_as_markdown`. It fetches a URL and returns main content as markdown (using trafilatura), so agents use fewer tokens. In your manifest, add a module with `type: "mcp"`, `transport: "http"`, and `url` set to your API base + `/api/v1/mcp` (e.g. `http://api:8000/api/v1/mcp` when the sandbox and API share a Docker network, or `https://your-api-host/api/v1/mcp` in production).
 
 ### Usage
 

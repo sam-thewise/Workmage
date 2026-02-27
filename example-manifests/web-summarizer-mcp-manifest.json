@@ -1,0 +1,26 @@
+{
+  "name": "Web Summarizer Agent (MCP)",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Fetches web pages via the built-in MCP scrape tool and summarizes their content. Uses token-efficient markdown (main-content extraction). Paste a URL and get a concise summary.",
+  "authors": ["Workmage Demo"],
+  "created_at": "2025-02-14T00:00:00Z",
+  "input_formats": ["text/plain", "text/url"],
+  "output_formats": ["text/plain"],
+  "skills": [
+    {"name": "natural_language_processing/natural_language_generation/text_summarization", "id": 201},
+    {"name": "web/web_scraping", "id": 301}
+  ],
+  "domains": [{"name": "technology/web_technologies", "id": 1501}],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "scrape_markdown",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp",
+      "timeout_sec": 15,
+      "retries": 2
+    }
+  ],
+  "locators": [{"type": "source_code", "urls": ["https://github.com/modelcontextprotocol/servers"]}]
+}

@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     FRONTEND_URL: str = "http://localhost:5173"
     API_PUBLIC_URL: str = "http://localhost:8000"  # For OAuth callbacks; must be reachable from browser
+    # Optional: MCP endpoint URL for manifests (e.g. if API is behind different domain). If unset, use API_PUBLIC_URL + API_V1_STR + "/mcp"
+    MCP_PUBLIC_URL: str = ""
 
     # Platform LLM keys (for platform-hosted runs when user doesn't use BYOK)
     OPENAI_API_KEY: str = ""
@@ -54,6 +56,30 @@ class Settings(BaseSettings):
 
     # Admin: comma-separated emails promoted to admin on startup
     ADMIN_EMAILS: str = ""
+
+    # Action infrastructure + rollout controls
+    ACTIONS_ENABLE_LIVE_TX: bool = False
+    ACTIONS_ENABLE_REFERENCE_CAPABILITIES: bool = True
+    ACTIONS_HTTP_TIMEOUT_SEC: int = 15
+    ACTIONS_DEFAULT_MAX_SPEND_WEI: int = 100000000000000000  # 0.1 AVAX default
+    ACTIONS_DEFAULT_MAX_GAS_WEI: int = 3000000000000000
+    ACTIONS_MIN_TRUST_SCORE: int = 20
+    ACTIONS_FACTORY_ADDRESSES: str = ""
+
+    # Avalanche/Snowtrace integration
+    AVALANCHE_RPC_URL: str = ""
+    AVALANCHE_FUJI_RPC_URL: str = ""
+    SNOWTRACE_API_URL: str = "https://api.routescan.io/v2/network/mainnet/evm/etherscan/api"
+    SNOWTRACE_FUJI_API_URL: str = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan/api"
+    SNOWTRACE_API_KEY: str = ""
+
+    # Signer: private key(s) for agent wallets. Never commit real keys.
+    # Single key for all agent wallets (testing) or JSON map: {"0xAddr": "0xhexkey", ...}
+    AGENT_SIGNER_PRIVATE_KEY: str = ""
+    AGENT_SIGNER_KEYS: str = ""  # JSON object wallet_address -> hex_private_key
+    # Optional base64 Fernet key for encrypting platform-managed signer keys. If unset, derived from SECRET_KEY + salt.
+    SIGNER_ENCRYPTION_KEY: str = ""
+    ACTIONS_REQUIRE_APPROVAL_FOR_LIVE: bool = True
 
 
 settings = Settings()

@@ -18,8 +18,13 @@ dependencies = [
     "python-multipart>=0.0.6",
     "celery>=5.3.0",
     "pyyaml>=6.0.1",
+    "trafilatura>=2.0.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
