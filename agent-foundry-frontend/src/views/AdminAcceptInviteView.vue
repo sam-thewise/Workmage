@@ -1,19 +1,17 @@
 <template>
-  <div class="accept-invite">
-    <h1>Moderator Invite</h1>
+  <div class="accept-invite mx-auto text-center pa-6" style="max-width: 400px;">
+    <h1 class="text-h4 mb-4">Moderator Invite</h1>
     <div v-if="!authStore.isAuthenticated" class="message">
-      <p>Please log in to accept this invite.</p>
-      <router-link :to="`/login?redirect=${encodeURIComponent(redirectTo)}`" class="btn primary">
-        Log in
-      </router-link>
+      <p class="mb-4">Please log in to accept this invite.</p>
+      <v-btn color="primary" :to="`/login?redirect=${encodeURIComponent(redirectTo)}`">Log in</v-btn>
     </div>
-    <div v-else-if="loading" class="loading">Processing...</div>
+    <div v-else-if="loading" class="text-medium-emphasis py-4">Processing...</div>
     <div v-else-if="success" class="success">
-      <p>You are now a moderator. <router-link to="/admin">Go to Admin Panel</router-link></p>
+      <p class="mb-4">You are now a moderator. <router-link to="/admin" class="text-accent text-decoration-none">Go to Admin Panel</router-link></p>
     </div>
     <div v-else-if="error" class="error">
-      <p>{{ error }}</p>
-      <router-link to="/">Go home</router-link>
+      <p class="text-error mb-4">{{ error }}</p>
+      <router-link to="/" class="text-accent text-decoration-none">Go home</router-link>
     </div>
   </div>
 </template>
@@ -62,11 +60,3 @@ onMounted(() => {
   }
 })
 </script>
-
-<style scoped>
-.accept-invite { max-width: 400px; margin: 4rem auto; text-align: center; }
-.message p, .success p, .error p { margin-bottom: 1rem; }
-.btn { display: inline-block; padding: 0.5rem 1rem; background: var(--wm-primary); color: var(--wm-white); border-radius: 6px; text-decoration: none; }
-.success { color: #34d399; }
-.error { color: var(--wm-danger); }
-</style>

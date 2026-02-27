@@ -1,25 +1,21 @@
 <template>
-  <div class="chain-builder">
-    <div class="toolbar">
-      <input v-model="chainName" type="text" placeholder="Chain name" class="name-input" />
-      <input v-model="chainCategory" type="text" placeholder="Category" class="meta-input" />
-      <input v-model.number="chainPriceCents" type="number" min="0" placeholder="Price (cents)" class="meta-input" />
-      <button @click="saveChain" class="btn primary" :disabled="saving || !chainName.trim()">
+  <div class="chain-builder pa-4">
+    <div class="toolbar d-flex flex-wrap align-center gap-2 mb-3">
+      <v-text-field v-model="chainName" placeholder="Chain name" density="compact" hide-details style="max-width: 200px;" />
+      <v-text-field v-model="chainCategory" placeholder="Category" density="compact" hide-details style="max-width: 140px;" />
+      <v-text-field v-model.number="chainPriceCents" type="number" min="0" placeholder="Price (cents)" density="compact" hide-details style="max-width: 120px;" />
+      <v-btn color="primary" size="small" :loading="saving" :disabled="!chainName.trim()" @click="saveChain">
         {{ saving ? 'Saving...' : 'Save' }}
-      </button>
-      <button v-if="chainId && chainStatus !== 'pending_review' && chainStatus !== 'listed'" @click="publishChain" class="btn publish">
-        Publish
-      </button>
-      <button v-if="chainId && (chainStatus === 'pending_review' || chainStatus === 'listed')" @click="unpublishChain" class="btn secondary">
-        Unpublish
-      </button>
-      <button v-if="chainId" @click="showRunModal = true" class="btn run">Run</button>
-      <span v-if="chainStatus" class="status" :class="chainStatus">{{ chainStatus }}</span>
-      <span v-if="rejectionReason" class="rejection">{{ rejectionReason }}</span>
-      <span v-if="saveError" class="error">{{ saveError }}</span>
+      </v-btn>
+      <v-btn v-if="chainId && chainStatus !== 'pending_review' && chainStatus !== 'listed'" size="small" color="success" @click="publishChain">Publish</v-btn>
+      <v-btn v-if="chainId && (chainStatus === 'pending_review' || chainStatus === 'listed')" size="small" variant="outlined" @click="unpublishChain">Unpublish</v-btn>
+      <v-btn v-if="chainId" size="small" variant="tonal" @click="showRunModal = true">Run</v-btn>
+      <v-chip v-if="chainStatus" size="x-small" :color="chainStatus === 'listed' ? 'success' : 'secondary'">{{ chainStatus }}</v-chip>
+      <span v-if="rejectionReason" class="text-error text-caption">{{ rejectionReason }}</span>
+      <span v-if="saveError" class="text-error text-caption">{{ saveError }}</span>
     </div>
-    <textarea v-model="chainDescription" rows="2" class="description-input" placeholder="Chain description"></textarea>
-    <input v-model="chainTagsText" type="text" class="tags-input" placeholder="Tags comma-separated (e.g. sales, research)" />
+    <v-textarea v-model="chainDescription" rows="2" placeholder="Chain description" density="compact" hide-details class="mb-2" />
+    <v-text-field v-model="chainTagsText" placeholder="Tags comma-separated (e.g. sales, research)" density="compact" hide-details class="mb-3" />
     <div class="builder-layout">
       <div class="palette">
         <h3>Agents</h3>
@@ -68,35 +64,21 @@
       </div>
     </div>
 
-    <div v-if="showRunModal" class="modal-overlay" @click.self="showRunModal = false">
-      <div class="modal">
-        <h3>Run Chain</h3>
-        <div class="field">
-          <label>Input (for entry agents)</label>
-          <textarea v-model="runInput" rows="4" placeholder="Enter your prompt..."></textarea>
+    <v-dialog v-model="showRunModal" max-width="500" persistent>
+      <v-card class="pa-4">
+        <h3 class="text-h6 mb-4">Run Chain</h3>
+        <v-textarea v-model="runInput" rows="4" placeholder="Enter your prompt..." label="Input (for entry agents)" density="comfortable" class="mb-3" />
+        <v-select v-model="runModel" :items="runModelOptions" item-title="title" item-value="value" label="Model" density="comfortable" class="mb-3" />
+        <v-checkbox v-model="runByok" label="Use my API key (BYOK)" density="compact" hide-details class="mb-4" />
+        <div class="d-flex gap-2">
+          <v-btn variant="outlined" @click="showRunModal = false">Cancel</v-btn>
+          <v-btn color="primary" :loading="running" :disabled="running" @click="runChain">Run</v-btn>
         </div>
-        <div class="field">
-          <label>Model</label>
-          <select v-model="runModel">
-            <option value="openai/gpt-4">OpenAI GPT-4</option>
-            <option value="openai/gpt-3.5-turbo">OpenAI GPT-3.5</option>
-            <option value="anthropic/claude-3-sonnet-20240229">Anthropic Claude 3 Sonnet</option>
-          </select>
-        </div>
-        <div class="field">
-          <label><input type="checkbox" v-model="runByok" /> Use my API key (BYOK)</label>
-        </div>
-        <div class="modal-actions">
-          <button @click="showRunModal = false" class="btn">Cancel</button>
-          <button @click="runChain" class="btn primary" :disabled="running">
-            {{ running ? 'Running...' : 'Run' }}
-          </button>
-        </div>
-        <div v-if="runResult" class="run-result">
-          <pre>{{ runResult.content || runResult.error || 'No output' }}</pre>
-        </div>
-      </div>
-    </div>
+        <v-card v-if="runResult" variant="tonal" class="pa-3 mt-4">
+          <pre class="text-body-2 ma-0" style="white-space: pre-wrap;">{{ runResult.content || runResult.error || 'No output' }}</pre>
+        </v-card>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -134,6 +116,11 @@ const runModel = ref('openai/gpt-4')
 const runByok = ref(false)
 const running = ref(false)
 const runResult = ref(null)
+const runModelOptions = [
+  { title: 'OpenAI GPT-4', value: 'openai/gpt-4' },
+  { title: 'OpenAI GPT-3.5', value: 'openai/gpt-3.5-turbo' },
+  { title: 'Anthropic Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet-20240229' },
+]
 let nodeIdCounter = 0
 let pollInterval = null
 const compatibilityCache = ref({})
@@ -423,24 +410,7 @@ watch(() => route.params.id, (id) => {
 </script>
 
 <style scoped>
-.chain-builder { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 400px; }
-.toolbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
-.name-input { padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); width: 200px; }
-.meta-input { padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); width: 150px; }
-.description-input, .tags-input { width: 100%; margin-bottom: 0.75rem; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn.publish { background: #0ea5e9; color: white; }
-.btn.secondary { background: #475569; color: white; }
-.btn.run { background: #10b981; color: white; }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.error { color: var(--wm-danger); font-size: 0.9rem; }
-.status { padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.75rem; text-transform: lowercase; }
-.status.draft { background: var(--wm-border); }
-.status.pending_review { background: #92400e; color: #fde68a; }
-.status.listed { background: #065f46; color: #a7f3d0; }
-.status.rejected { background: #7f1d1d; color: #fecaca; }
-.rejection { color: var(--wm-danger); font-size: 0.8rem; }
+.chain-builder { display: flex; flex-direction: column; height: calc(100vh - 140px); min-height: 400px; }
 .builder-layout { display: flex; flex: 1; min-height: 0; gap: 1rem; }
 .palette { width: 200px; flex-shrink: 0; background: var(--wm-bg-soft); border-radius: 8px; padding: 1rem; border: 1px solid var(--wm-border); }
 .palette h3 { margin: 0 0 0.5rem; font-size: 1rem; }
@@ -460,13 +430,4 @@ watch(() => route.params.id, (id) => {
 .agent-node { padding: 0.5rem 1rem; background: var(--wm-bg-soft); border: 1px solid var(--wm-border); border-radius: 8px; min-width: 120px; position: relative; }
 .agent-node-content { display: flex; align-items: center; gap: 0.5rem; }
 .badge { font-size: 0.7rem; background: var(--wm-primary); color: var(--wm-white); padding: 0.15rem 0.4rem; border-radius: 4px; }
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal { background: var(--wm-bg-soft); padding: 1.5rem; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; }
-.modal h3 { margin: 0 0 1rem; }
-.field { margin-bottom: 1rem; }
-.field label { display: block; margin-bottom: 0.25rem; }
-.field textarea, .field select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg); color: var(--wm-text); }
-.modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
-.run-result { margin-top: 1rem; padding: 1rem; background: var(--wm-bg); border-radius: 6px; max-height: 200px; overflow-y: auto; }
-.run-result pre { white-space: pre-wrap; font-size: 0.85rem; margin: 0; }
 </style>

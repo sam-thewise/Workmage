@@ -1,23 +1,28 @@
 <template>
-  <div class="api-keys">
-    <h1>API Keys (BYOK)</h1>
-    <p>Save your LLM API keys to use your own credits when running agents.</p>
-    <div class="key-form">
-      <select v-model="provider">
-        <option value="openai">OpenAI</option>
-        <option value="anthropic">Anthropic</option>
-      </select>
-      <input v-model="apiKey" type="password" placeholder="sk-..." />
-      <button @click="saveKey" class="btn primary">Save</button>
+  <div class="api-keys mx-auto pa-4" style="max-width: 480px;">
+    <h1 class="text-h4 mb-2">API Keys (BYOK)</h1>
+    <p class="text-body-2 text-medium-emphasis mb-4">Save your LLM API keys to use your own credits when running agents.</p>
+    <div class="d-flex gap-2 align-center flex-wrap mb-4">
+      <v-select
+        v-model="provider"
+        :items="[{ title: 'OpenAI', value: 'openai' }, { title: 'Anthropic', value: 'anthropic' }]"
+        item-title="title"
+        item-value="value"
+        density="compact"
+        hide-details
+        style="max-width: 140px;"
+      />
+      <v-text-field v-model="apiKey" type="password" placeholder="sk-..." density="compact" hide-details class="flex-grow-1" style="min-width: 200px;" />
+      <v-btn color="primary" @click="saveKey">Save</v-btn>
     </div>
-    <p v-if="saved" class="success">Key saved.</p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <div class="saved" v-if="providers.length">
-      <h3>Saved providers</h3>
-      <ul>
-        <li v-for="p in providers" :key="p">
-          {{ p }}
-          <button @click="removeKey(p)" class="btn small">Remove</button>
+    <p v-if="saved" class="text-success text-body-2 mb-2">Key saved.</p>
+    <p v-if="error" class="text-error text-body-2 mb-2">{{ error }}</p>
+    <div v-if="providers.length" class="mt-6">
+      <h3 class="text-h6 mb-3">Saved providers</h3>
+      <ul class="pa-0 ma-0" style="list-style: none;">
+        <li v-for="p in providers" :key="p" class="d-flex align-center py-2">
+          <span class="flex-grow-1">{{ p }}</span>
+          <v-btn size="small" variant="text" @click="removeKey(p)">Remove</v-btn>
         </li>
       </ul>
     </div>
@@ -68,18 +73,3 @@ async function removeKey(p) {
 
 onMounted(loadProviders)
 </script>
-
-<style scoped>
-.api-keys { max-width: 480px; }
-.key-form { display: flex; gap: 0.5rem; margin: 1rem 0; }
-.key-form select, .key-form input { padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
-.key-form input { flex: 1; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn.small { padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-left: 0.5rem; }
-.success { color: #10b981; }
-.error { color: var(--wm-danger); }
-.saved { margin-top: 1.5rem; }
-.saved ul { list-style: none; padding: 0; }
-.saved li { display: flex; align-items: center; margin: 0.5rem 0; }
-</style>

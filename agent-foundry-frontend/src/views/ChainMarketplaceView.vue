@@ -1,27 +1,33 @@
 <template>
   <div class="marketplace">
-    <h1>Chain Marketplace</h1>
-    <div class="filters">
-      <label>Category</label>
-      <select v-model="category" @change="loadChains">
-        <option value="">All</option>
-        <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-      </select>
+    <h1 class="text-h4 mb-4">Chain Marketplace</h1>
+    <div class="d-flex align-center gap-2 mb-6">
+      <label class="text-body-2">Category</label>
+      <v-select
+        v-model="category"
+        :items="categoryItems"
+        item-title="title"
+        item-value="value"
+        density="compact"
+        hide-details
+        class="flex-grow-0"
+        style="max-width: 200px;"
+        @update:model-value="loadChains"
+      />
     </div>
-    <p v-if="loading">Loading chains...</p>
-    <div v-else class="chains-grid">
-      <router-link
-        v-for="chain in chains"
-        :key="chain.id"
-        :to="`/marketplace/chains/${chain.id}`"
-        class="chain-card"
-      >
-        <h3>{{ chain.name }}</h3>
-        <p>{{ chain.description || 'No description' }}</p>
-        <span class="price">${{ (chain.price_cents / 100).toFixed(2) }}</span>
-      </router-link>
-    </div>
-    <p v-if="!loading && chains.length === 0" class="empty">No chains listed yet.</p>
+    <p v-if="loading" class="text-medium-emphasis mb-4">Loading chains...</p>
+    <v-row v-else>
+      <v-col v-for="chain in chains" :key="chain.id" cols="12" sm="6" md="4">
+        <router-link :to="`/marketplace/chains/${chain.id}`" class="text-decoration-none">
+          <v-card variant="tonal" class="pa-4 fill-height" hover>
+            <h3 class="text-h6 mb-2">{{ chain.name }}</h3>
+            <p class="text-body-2 text-medium-emphasis mb-2">{{ chain.description || 'No description' }}</p>
+            <span class="text-subtitle-1 text-accent font-weight-bold">${{ (chain.price_cents / 100).toFixed(2) }}</span>
+          </v-card>
+        </router-link>
+      </v-col>
+    </v-row>
+    <p v-if="!loading && chains.length === 0" class="text-medium-emphasis mt-8">No chains listed yet.</p>
   </div>
 </template>
 
@@ -40,6 +46,11 @@ const categories = computed(() => {
   return [...s].sort()
 })
 
+const categoryItems = computed(() => [
+  { title: 'All', value: '' },
+  ...categories.value.map(c => ({ title: c, value: c }))
+])
+
 async function loadChains() {
   loading.value = true
   try {
@@ -56,37 +67,3 @@ async function loadChains() {
 
 onMounted(loadChains)
 </script>
-
-<style scoped>
-.chains-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
-}
-.filters { margin-bottom: 1.5rem; }
-.filters label { margin-right: 0.5rem; }
-.filters select { padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
-.chain-card {
-  background: var(--wm-bg-soft);
-  padding: 1.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--wm-border);
-  text-decoration: none;
-  color: inherit;
-  display: block;
-}
-.chain-card:hover { border-color: var(--wm-accent); }
-.chain-card p {
-  color: var(--wm-text-muted);
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
-}
-.price {
-  color: var(--wm-accent);
-  font-weight: 600;
-}
-.empty {
-  color: var(--wm-text-muted);
-  margin-top: 2rem;
-}
-</style>

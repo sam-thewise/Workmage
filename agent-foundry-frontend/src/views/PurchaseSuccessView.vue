@@ -1,16 +1,18 @@
 <template>
-  <div class="purchase-success">
-    <h1>Purchase Successful</h1>
-    <p v-if="loading">Confirming your purchase...</p>
+  <div class="purchase-success text-center pa-6">
+    <h1 class="text-h4 mb-4">Purchase Successful</h1>
+    <p v-if="loading" class="text-medium-emphasis mb-4">Confirming your purchase...</p>
     <template v-else-if="error">
-      <p class="error">{{ error }}</p>
-      <router-link to="/marketplace" class="btn">Back to Marketplace</router-link>
+      <p class="text-error mb-4">{{ error }}</p>
+      <v-btn variant="outlined" color="primary" to="/marketplace">Back to Marketplace</v-btn>
     </template>
     <template v-else>
-      <p>Thank you! You now have access to this {{ chainId ? 'chain' : 'agent' }}.</p>
-      <router-link v-if="agentId" :to="`/agents/${agentId}`" class="btn primary">View Agent</router-link>
-      <router-link v-else-if="chainId" :to="`/marketplace/chains/${chainId}`" class="btn primary">View Chain</router-link>
-      <router-link :to="chainId ? '/marketplace/chains' : '/marketplace'" class="btn">Browse More</router-link>
+      <p class="mb-4">Thank you! You now have access to this {{ chainId ? 'chain' : 'agent' }}.</p>
+      <div class="d-flex gap-2 justify-center flex-wrap">
+        <v-btn v-if="agentId" color="primary" :to="`/agents/${agentId}`">View Agent</v-btn>
+        <v-btn v-else-if="chainId" color="primary" :to="`/marketplace/chains/${chainId}`">View Chain</v-btn>
+        <v-btn variant="outlined" color="primary" :to="chainId ? '/marketplace/chains' : '/marketplace'">Browse More</v-btn>
+      </div>
     </template>
   </div>
 </template>
@@ -54,11 +56,3 @@ onMounted(async () => {
   }
 })
 </script>
-
-<style scoped>
-.purchase-success { text-align: center; padding: 2rem; }
-.purchase-success h1 { margin-bottom: 1rem; }
-.btn { display: inline-block; padding: 0.75rem 1.5rem; margin: 0.5rem; border-radius: 8px; text-decoration: none; border: 1px solid var(--wm-border); color: var(--wm-text); }
-.btn.primary { background: var(--wm-primary); border-color: var(--wm-primary); color: var(--wm-white); }
-.error { color: var(--wm-danger); margin: 1rem 0; }
-</style>

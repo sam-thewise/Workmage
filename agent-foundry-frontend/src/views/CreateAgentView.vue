@@ -1,54 +1,37 @@
 <template>
-  <div class="create-agent">
-    <h1>{{ isEdit ? 'Edit Agent' : 'Create Agent' }}</h1>
-    <form @submit.prevent="submit" class="agent-form">
-      <div class="field">
-        <label>OASF Manifest (JSON or YAML)</label>
-        <textarea v-model="manifestRaw" rows="12" placeholder='{"name":"My Agent","version":"1.0.0",...}'></textarea>
-        <button type="button" @click="validateManifest" class="btn secondary">Validate</button>
-        <div v-if="validationResult" :class="['validation', validationResult.valid ? 'valid' : 'invalid']">
+  <div class="create-agent mx-auto" style="max-width: 720px;">
+    <h1 class="text-h4 mb-4">{{ isEdit ? 'Edit Agent' : 'Create Agent' }}</h1>
+    <v-form @submit.prevent="submit" class="d-flex flex-column gap-4">
+      <v-card variant="tonal" class="pa-4">
+        <v-label class="text-body-2 font-weight-medium mb-2 d-block">OASF Manifest (JSON or YAML)</v-label>
+        <v-textarea v-model="manifestRaw" rows="12" placeholder='{"name":"My Agent","version":"1.0.0",...}' density="comfortable" class="mb-2" />
+        <v-btn type="button" variant="outlined" size="small" @click="validateManifest" class="mb-2">Validate</v-btn>
+        <div v-if="validationResult" :class="['pa-3 rounded', validationResult.valid ? 'bg-success' : 'bg-error']">
           <span v-if="validationResult.valid">✓ Manifest is valid</span>
           <div v-else>
             <span>Validation errors:</span>
-            <ul>
+            <ul class="ma-0 mt-1 pl-4">
               <li v-for="(err, i) in validationResult.errors" :key="i">{{ err }}</li>
             </ul>
           </div>
         </div>
+      </v-card>
+      <v-text-field v-model="name" label="Name (override manifest)" placeholder="Agent name from manifest" density="comfortable" />
+      <v-textarea v-model="description" label="Description (override manifest)" placeholder="Agent description" rows="3" density="comfortable" />
+      <v-text-field v-model.number="priceDollars" type="number" min="0" step="0.01" label="Price (USD)" placeholder="0 = free" density="comfortable" />
+      <v-card v-if="priceDollars > 0" variant="tonal" class="pa-3">
+        <p class="text-body-2 mb-1"><strong>Buyer pays:</strong> ${{ priceDisplay }}</p>
+        <p class="text-body-2 mb-1"><strong>You receive (80%):</strong> ${{ creatorDisplay }}</p>
+        <p class="text-body-2 text-medium-emphasis mb-0"><strong>Platform fee (20%):</strong> ${{ platformFeeDisplay }}</p>
+      </v-card>
+      <v-text-field v-model="category" label="Category" placeholder="e.g. productivity" density="comfortable" />
+      <v-text-field v-model="tagsStr" label="Tags (comma-separated)" placeholder="tag1, tag2" density="comfortable" />
+      <div class="d-flex gap-2">
+        <v-btn type="submit" color="primary" :loading="submitting">{{ isEdit ? 'Save' : 'Create' }}</v-btn>
+        <v-btn variant="outlined" color="primary" to="/dashboard/agents">Cancel</v-btn>
       </div>
-      <div class="field">
-        <label>Name (override manifest)</label>
-        <input v-model="name" type="text" placeholder="Agent name from manifest" />
-      </div>
-      <div class="field">
-        <label>Description (override manifest)</label>
-        <textarea v-model="description" rows="3" placeholder="Agent description"></textarea>
-      </div>
-      <div class="field">
-        <label>Price (USD)</label>
-        <input v-model.number="priceDollars" type="number" min="0" step="0.01" placeholder="0 = free" />
-        <div v-if="priceDollars > 0" class="commission-breakdown">
-          <p><strong>Buyer pays:</strong> ${{ priceDisplay }}</p>
-          <p><strong>You receive (80%):</strong> ${{ creatorDisplay }}</p>
-          <p class="platform-fee"><strong>Platform fee (20%):</strong> ${{ platformFeeDisplay }}</p>
-        </div>
-      </div>
-      <div class="field">
-        <label>Category</label>
-        <input v-model="category" type="text" placeholder="e.g. productivity" />
-      </div>
-      <div class="field">
-        <label>Tags (comma-separated)</label>
-        <input v-model="tagsStr" type="text" placeholder="tag1, tag2" />
-      </div>
-      <div class="actions">
-        <button type="submit" class="btn primary" :disabled="submitting">
-          {{ isEdit ? 'Save' : 'Create' }}
-        </button>
-        <router-link to="/dashboard/agents" class="btn secondary">Cancel</router-link>
-      </div>
-    </form>
-    <div v-if="error" class="error">{{ error }}</div>
+    </v-form>
+    <p v-if="error" class="text-error mt-4">{{ error }}</p>
   </div>
 </template>
 
@@ -162,23 +145,3 @@ onMounted(() => {
   if (isEdit.value) loadAgent()
 })
 </script>
-
-<style scoped>
-.create-agent { max-width: 720px; }
-.agent-form { display: flex; flex-direction: column; gap: 1rem; }
-.field label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
-.field textarea, .field input { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
-.validation { padding: 0.5rem; border-radius: 6px; margin-top: 0.25rem; }
-.validation.valid { background: #065f46; color: #a7f3d0; }
-.validation.invalid { background: #7f1d1d; color: #fecaca; }
-.validation ul { margin: 0.25rem 0 0 1rem; }
-.commission-breakdown { margin-top: 0.5rem; padding: 0.75rem; background: var(--wm-bg); border-radius: 6px; font-size: 0.9rem; }
-.commission-breakdown p { margin: 0.25rem 0; }
-.commission-breakdown .platform-fee { color: var(--wm-text-muted); }
-.btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn.secondary { background: var(--wm-bg-soft); color: var(--wm-white); margin-left: 0.5rem; border: 1px solid var(--wm-border); }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.actions { display: flex; align-items: center; }
-.error { color: var(--wm-danger); margin-top: 1rem; }
-</style>

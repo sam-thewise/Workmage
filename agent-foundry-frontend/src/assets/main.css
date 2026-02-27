@@ -2,51 +2,34 @@
 
 * {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
+
 :root {
   --wm-font-body: 'Golos Text', system-ui, -apple-system, sans-serif;
   --wm-font-heading: 'Libre Caslon Text', Georgia, serif;
-  --wm-white: #fefefe;
-  --wm-primary: #190056;
-  --wm-accent: #608bf7;
-  --wm-surface: #fffdec;
-  --wm-surface-alt: #fffbd7;
-  --wm-bg: #120633;
-  --wm-bg-soft: #1d0c5a;
-  --wm-text: #fefefe;
-  --wm-text-muted: #d7d3ee;
-  --wm-border: #4f3b99;
-  --wm-danger: #f87171;
 }
-body {
+
+body,
+.v-application {
   font-family: var(--wm-font-body);
-  background: var(--wm-bg);
-  color: var(--wm-text);
-  min-height: 100vh;
 }
-h1, h2, h3, h4, h5, h6, .brand, .brand span {
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.v-application .text-h1,
+.v-application .text-h2,
+.v-application .text-h3,
+.v-application .text-h4,
+.v-application .text-h5,
+.v-application .text-h6,
+.v-application .text-overline,
+.v-application .v-toolbar-title,
+.v-application .v-card-title,
+.v-application .v-list-subheader {
   font-family: var(--wm-font-heading);
-}
-a {
-  color: var(--wm-accent);
-}
-button {
-  background: var(--wm-primary);
-  color: var(--wm-white);
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
-button:hover {
-  background: var(--wm-accent);
-}
-input {
-  padding: 0.5rem;
-  border-radius: 6px;
-  border: 1px solid var(--wm-border);
-  background: var(--wm-bg-soft);
-  color: var(--wm-text);
+  font-weight: 700;
 }

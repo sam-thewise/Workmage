@@ -1,16 +1,16 @@
 <template>
-  <div class="expert-settings">
-    <h2>Creator Settings</h2>
-    <p v-if="authStore.user?.role !== 'expert'">Experts can link Stripe to receive payments from agent sales.</p>
+  <div class="expert-settings mx-auto mt-4" style="max-width: 500px;">
+    <h2 class="text-h5 mb-2">Creator Settings</h2>
+    <p v-if="authStore.user?.role !== 'expert'" class="text-body-2 text-medium-emphasis mb-4">Experts can link Stripe to receive payments from agent sales.</p>
     <template v-else>
-      <div class="stripe-section">
-        <h3>Stripe Account</h3>
-        <p v-if="stripeLinked" class="linked">✓ Stripe account linked. You can sell paid agents.</p>
+      <v-card variant="tonal" class="pa-4">
+        <h3 class="text-h6 mb-2">Stripe Account</h3>
+        <p v-if="stripeLinked" class="text-success mb-0">✓ Stripe account linked. You can sell paid agents.</p>
         <template v-else>
-          <p class="hint">Link your Stripe account to receive payments (80% of each sale). The platform keeps 20% commission.</p>
-          <button @click="linkStripe" class="btn primary" :disabled="linking">Link Stripe Account</button>
+          <p class="text-body-2 text-medium-emphasis mb-4">Link your Stripe account to receive payments (80% of each sale). The platform keeps 20% commission.</p>
+          <v-btn color="primary" :loading="linking" @click="linkStripe">Link Stripe Account</v-btn>
         </template>
-      </div>
+      </v-card>
     </template>
   </div>
 </template>
@@ -48,14 +48,3 @@ async function linkStripe() {
 
 onMounted(loadStatus)
 </script>
-
-<style scoped>
-.expert-settings { max-width: 500px; margin-top: 1rem; }
-.stripe-section { padding: 1rem; background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border); }
-.stripe-section h3 { margin: 0 0 0.5rem; }
-.hint { color: var(--wm-text-muted); font-size: 0.9rem; margin: 0.5rem 0 1rem; }
-.linked { color: #34d399; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-</style>

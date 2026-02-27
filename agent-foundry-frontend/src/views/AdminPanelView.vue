@@ -1,156 +1,125 @@
 <template>
-  <div class="admin-panel">
-    <h1>Admin Panel</h1>
-    <p class="role-badge" :class="authStore.user?.role">{{ authStore.user?.role }}</p>
+  <div class="admin-panel mx-auto" style="max-width: 900px;">
+    <h1 class="text-h4 mb-2">Admin Panel</h1>
+    <v-chip :color="authStore.user?.role === 'admin' ? 'primary' : 'info'" size="small" class="mb-4">{{ authStore.user?.role }}</v-chip>
 
-    <div class="tabs">
-      <button
-        :class="{ active: tab === 'pending' }"
-        @click="tab = 'pending'"
-      >
-        Pending Agents ({{ pendingCount }})
-      </button>
-      <button
-        :class="{ active: tab === 'pendingChains' }"
-        @click="tab = 'pendingChains'; loadPendingChains()"
-      >
-        Pending Chains ({{ pendingChainCount }})
-      </button>
-      <button
-        v-if="authStore.user?.role === 'admin'"
-        :class="{ active: tab === 'invites' }"
-        @click="tab = 'invites'; loadInvites()"
-      >
-        Moderator Invites
-      </button>
-      <button
-        v-if="authStore.user?.role === 'admin'"
-        :class="{ active: tab === 'agentNft' }"
-        @click="tab = 'agentNft'; loadAgentNftContracts()"
-      >
-        Agent NFT Contracts
-      </button>
-    </div>
+    <v-tabs v-model="tab" class="mb-4">
+      <v-tab value="pending">Pending Agents ({{ pendingCount }})</v-tab>
+      <v-tab value="pendingChains" @click="loadPendingChains()">Pending Chains ({{ pendingChainCount }})</v-tab>
+      <v-tab v-if="authStore.user?.role === 'admin'" value="invites" @click="loadInvites()">Moderator Invites</v-tab>
+      <v-tab v-if="authStore.user?.role === 'admin'" value="agentNft" @click="loadAgentNftContracts()">Agent NFT Contracts</v-tab>
+    </v-tabs>
 
-    <!-- Pending agents -->
-    <div v-show="tab === 'pending'" class="section">
-      <div v-if="pendingLoading" class="loading">Loading...</div>
-      <div v-else-if="pendingAgents.length === 0" class="empty">No agents pending approval.</div>
-      <div v-else class="pending-list">
-        <div
-          v-for="a in pendingAgents"
-          :key="a.id"
-          class="pending-card"
-        >
-          <div class="pending-info">
-            <strong>{{ a.name }}</strong>
-            <span class="meta">ID {{ a.id }} · Expert {{ a.expert_id }}</span>
-          </div>
-          <div class="pending-actions">
-            <router-link :to="`/admin/review/${a.id}`" class="btn small">Review</router-link>
-            <button @click="approve(a.id)" class="btn small primary">Approve</button>
-            <button @click="reject(a.id)" class="btn small danger">Reject</button>
-          </div>
+    <v-window v-model="tab">
+      <!-- Pending agents -->
+      <v-window-item value="pending">
+        <div v-if="pendingLoading" class="text-medium-emphasis py-4">Loading...</div>
+        <div v-else-if="pendingAgents.length === 0" class="text-medium-emphasis py-4">No agents pending approval.</div>
+        <div v-else class="d-flex flex-column gap-2">
+          <v-card v-for="a in pendingAgents" :key="a.id" variant="tonal" class="pa-4">
+            <div class="d-flex justify-space-between align-center flex-wrap gap-2">
+              <div>
+                <strong>{{ a.name }}</strong>
+                <span class="text-caption text-medium-emphasis d-block">ID {{ a.id }} · Expert {{ a.expert_id }}</span>
+              </div>
+              <div class="d-flex gap-2">
+                <v-btn size="small" variant="text" :to="`/admin/review/${a.id}`">Review</v-btn>
+                <v-btn size="small" color="primary" @click="approve(a.id)">Approve</v-btn>
+                <v-btn size="small" color="error" @click="reject(a.id)">Reject</v-btn>
+              </div>
+            </div>
+          </v-card>
         </div>
-      </div>
-    </div>
+      </v-window-item>
 
-    <!-- Pending chains -->
-    <div v-show="tab === 'pendingChains'" class="section">
-      <div v-if="pendingChainsLoading" class="loading">Loading...</div>
-      <div v-else-if="pendingChains.length === 0" class="empty">No chains pending approval.</div>
-      <div v-else class="pending-list">
-        <div
-          v-for="c in pendingChains"
-          :key="c.id"
-          class="pending-card"
-        >
-          <div class="pending-info">
-            <strong>{{ c.name }}</strong>
-            <span class="meta">ID {{ c.id }} · Expert {{ c.expert_id }}</span>
-          </div>
-          <div class="pending-actions">
-            <router-link :to="`/admin/review-chain/${c.id}`" class="btn small">Review</router-link>
-            <button @click="approveChain(c.id)" class="btn small primary">Approve</button>
-            <button @click="rejectChain(c.id)" class="btn small danger">Reject</button>
-          </div>
+      <!-- Pending chains -->
+      <v-window-item value="pendingChains">
+        <div v-if="pendingChainsLoading" class="text-medium-emphasis py-4">Loading...</div>
+        <div v-else-if="pendingChains.length === 0" class="text-medium-emphasis py-4">No chains pending approval.</div>
+        <div v-else class="d-flex flex-column gap-2">
+          <v-card v-for="c in pendingChains" :key="c.id" variant="tonal" class="pa-4">
+            <div class="d-flex justify-space-between align-center flex-wrap gap-2">
+              <div>
+                <strong>{{ c.name }}</strong>
+                <span class="text-caption text-medium-emphasis d-block">ID {{ c.id }} · Expert {{ c.expert_id }}</span>
+              </div>
+              <div class="d-flex gap-2">
+                <v-btn size="small" variant="text" :to="`/admin/review-chain/${c.id}`">Review</v-btn>
+                <v-btn size="small" color="primary" @click="approveChain(c.id)">Approve</v-btn>
+                <v-btn size="small" color="error" @click="rejectChain(c.id)">Reject</v-btn>
+              </div>
+            </div>
+          </v-card>
         </div>
-      </div>
-    </div>
+      </v-window-item>
 
-    <!-- Agent NFT contracts (admin only) -->
-    <div v-show="tab === 'agentNft'" class="section">
-      <h3>Registered shared agent NFT contracts</h3>
-      <div v-if="agentNftLoading" class="loading">Loading...</div>
-      <div v-else class="agent-nft-list">
-        <div v-for="c in agentNftContracts" :key="c.network" class="nft-card">
-          <div class="nft-info">
-            <strong>{{ c.network }}</strong>
-            <span class="meta">Chain {{ c.chain_id }} · {{ c.contract_address }}</span>
-            <span class="meta" v-if="c.deploy_tx_hash">Tx: {{ c.deploy_tx_hash }}</span>
-            <span class="meta verified" v-if="c.verified_at">Verified {{ formatDate(c.verified_at) }}</span>
-          </div>
-          <div class="nft-actions">
-            <button @click="openVerifyModal(c)" class="btn small">Verify on Snowtrace</button>
-            <button @click="checkVerifyStatus(c.network)" class="btn small" :disabled="verifyStatusLoading === c.network">
-              {{ verifyStatusLoading === c.network ? 'Checking...' : 'Check verification status' }}
-            </button>
-          </div>
+      <!-- Agent NFT contracts -->
+      <v-window-item value="agentNft">
+        <h3 class="text-h6 mb-3">Registered shared agent NFT contracts</h3>
+        <div v-if="agentNftLoading" class="text-medium-emphasis py-4">Loading...</div>
+        <div v-else class="d-flex flex-column gap-2 mb-6">
+          <v-card v-for="c in agentNftContracts" :key="c.network" variant="tonal" class="pa-4">
+            <div class="d-flex justify-space-between align-start flex-wrap gap-2">
+              <div class="flex-grow-1">
+                <strong>{{ c.network }}</strong>
+                <span class="text-caption text-medium-emphasis d-block">Chain {{ c.chain_id }} · {{ c.contract_address }}</span>
+                <span v-if="c.deploy_tx_hash" class="text-caption text-medium-emphasis d-block">Tx: {{ c.deploy_tx_hash }}</span>
+                <span v-if="c.verified_at" class="text-caption text-success d-block">Verified {{ formatDate(c.verified_at) }}</span>
+              </div>
+              <div class="d-flex gap-2">
+                <v-btn size="small" variant="outlined" @click="openVerifyModal(c)">Verify on Snowtrace</v-btn>
+                <v-btn size="small" variant="outlined" :loading="verifyStatusLoading === c.network" :disabled="verifyStatusLoading === c.network" @click="checkVerifyStatus(c.network)">
+                  {{ verifyStatusLoading === c.network ? 'Checking...' : 'Check verification status' }}
+                </v-btn>
+              </div>
+            </div>
+          </v-card>
         </div>
-        <p v-if="agentNftContracts.length === 0" class="empty">No contracts registered. Register one below.</p>
-      </div>
-      <h3 class="mt-2">Register contract</h3>
-      <div class="nft-form">
-        <input v-model="nftForm.network" placeholder="Network (fuji or avalanche)" />
-        <input v-model.number="nftForm.chain_id" type="number" placeholder="Chain ID (43113 or 43114)" />
-        <input v-model="nftForm.contract_address" placeholder="Contract address (0x...)" />
-        <input v-model="nftForm.deploy_tx_hash" placeholder="Deploy tx hash (optional)" />
-        <button @click="registerAgentNftContract" class="btn primary" :disabled="nftLoading || !nftForm.contract_address">
-          {{ nftLoading ? 'Registering...' : 'Register' }}
-        </button>
-      </div>
-      <p v-if="nftSuccess" class="success">{{ nftSuccess }}</p>
-      <p v-if="nftError" class="error">{{ nftError }}</p>
-
-      <!-- Verify modal -->
-      <div v-if="verifyModal" class="modal-overlay" @click.self="verifyModal = null">
-        <div class="modal">
-          <h4>Verify {{ verifyModal.network }} on Snowtrace</h4>
-          <p class="hint">Paste flattened Solidity source (single file). Or use: npx hardhat verify --network {{ verifyModal.network }} &lt;address&gt; "Workmage Agent Identity" "WMAI" "&lt;base_uri&gt;"</p>
-          <textarea v-model="verifyForm.source_code" placeholder="// SPDX-License-Identifier: MIT&#10;pragma solidity ^0.8.20;&#10;..." rows="12" />
-          <div class="form-row">
-            <input v-model="verifyForm.contract_name" placeholder="Contract name (e.g. WorkmageAgentNFT)" />
-            <input v-model="verifyForm.compiler_version" placeholder="Compiler (e.g. v0.8.20+commit.a1b79de6)" />
-          </div>
-          <div class="modal-actions">
-            <button @click="verifyModal = null" class="btn">Cancel</button>
-            <button @click="submitVerify(verifyModal.network)" class="btn primary" :disabled="verifySubmitting || !verifyForm.source_code">
-              {{ verifySubmitting ? 'Submitting...' : 'Submit verification' }}
-            </button>
-          </div>
-          <p v-if="verifyResult" class="success">{{ verifyResult }}</p>
-          <p v-if="verifyError" class="error">{{ verifyError }}</p>
+        <p v-if="agentNftContracts.length === 0" class="text-medium-emphasis mb-4">No contracts registered. Register one below.</p>
+        <h3 class="text-h6 mb-3">Register contract</h3>
+        <div class="d-flex flex-wrap gap-2 align-center mb-4">
+          <v-text-field v-model="nftForm.network" placeholder="Network (fuji or avalanche)" density="compact" hide-details style="max-width: 160px;" />
+          <v-text-field v-model.number="nftForm.chain_id" type="number" placeholder="Chain ID" density="compact" hide-details style="max-width: 120px;" />
+          <v-text-field v-model="nftForm.contract_address" placeholder="Contract address (0x...)" density="compact" hide-details style="min-width: 200px;" />
+          <v-text-field v-model="nftForm.deploy_tx_hash" placeholder="Deploy tx hash (optional)" density="compact" hide-details style="min-width: 180px;" />
+          <v-btn color="primary" :loading="nftLoading" :disabled="!nftForm.contract_address" @click="registerAgentNftContract">Register</v-btn>
         </div>
-      </div>
-    </div>
+        <p v-if="nftSuccess" class="text-success text-body-2">{{ nftSuccess }}</p>
+        <p v-if="nftError" class="text-error text-body-2">{{ nftError }}</p>
 
-    <!-- Moderator invites (admin only) -->
-    <div v-show="tab === 'invites'" class="section">
-      <div class="invite-form">
-        <input v-model="inviteEmail" type="email" placeholder="moderator@example.com" />
-        <button @click="createInvite" class="btn primary" :disabled="inviteLoading || !inviteEmail">
-          Invite Moderator
-        </button>
-      </div>
-      <p v-if="inviteSuccess" class="success">{{ inviteSuccess }}</p>
-      <p v-if="inviteError" class="error">{{ inviteError }}</p>
-      <div v-if="invitesLoading" class="loading">Loading invites...</div>
-      <ul v-else class="invites-list">
-        <li v-for="i in invites" :key="i.id">
-          {{ i.email }} — {{ i.accepted_at ? 'Accepted' : (i.expires_at ? `Expires ${formatDate(i.expires_at)}` : '') }}
-        </li>
-      </ul>
-    </div>
+        <v-dialog v-model="verifyModal" max-width="600" persistent>
+          <v-card v-if="verifyModal" class="pa-4">
+            <h4 class="text-h6 mb-2">Verify {{ verifyModal.network }} on Snowtrace</h4>
+            <p class="text-caption text-medium-emphasis mb-3">Paste flattened Solidity source (single file). Or use: npx hardhat verify --network {{ verifyModal.network }} &lt;address&gt; "Workmage Agent Identity" "WMAI" "&lt;base_uri&gt;"</p>
+            <v-textarea v-model="verifyForm.source_code" placeholder="// SPDX-License-Identifier: MIT..." rows="12" density="compact" class="mb-3 font-monospace" />
+            <div class="d-flex gap-2 mb-3">
+              <v-text-field v-model="verifyForm.contract_name" placeholder="Contract name" density="compact" hide-details />
+              <v-text-field v-model="verifyForm.compiler_version" placeholder="Compiler version" density="compact" hide-details />
+            </div>
+            <div class="d-flex gap-2">
+              <v-btn variant="outlined" @click="verifyModal = null">Cancel</v-btn>
+              <v-btn color="primary" :loading="verifySubmitting" :disabled="!verifyForm.source_code" @click="submitVerify(verifyModal.network)">Submit verification</v-btn>
+            </div>
+            <p v-if="verifyResult" class="text-success text-body-2 mt-3 mb-0">{{ verifyResult }}</p>
+            <p v-if="verifyError" class="text-error text-body-2 mt-3 mb-0">{{ verifyError }}</p>
+          </v-card>
+        </v-dialog>
+      </v-window-item>
+
+      <!-- Moderator invites -->
+      <v-window-item value="invites">
+        <div class="d-flex gap-2 mb-4">
+          <v-text-field v-model="inviteEmail" type="email" placeholder="moderator@example.com" density="compact" hide-details class="flex-grow-1" style="max-width: 280px;" />
+          <v-btn color="primary" :loading="inviteLoading" :disabled="!inviteEmail" @click="createInvite">Invite Moderator</v-btn>
+        </div>
+        <p v-if="inviteSuccess" class="text-success text-body-2">{{ inviteSuccess }}</p>
+        <p v-if="inviteError" class="text-error text-body-2">{{ inviteError }}</p>
+        <div v-if="invitesLoading" class="text-medium-emphasis py-4">Loading invites...</div>
+        <ul v-else class="pa-0 ma-0" style="list-style: none;">
+          <li v-for="i in invites" :key="i.id" class="py-2 border-b">{{ i.email }} — {{ i.accepted_at ? 'Accepted' : (i.expires_at ? `Expires ${formatDate(i.expires_at)}` : '') }}</li>
+        </ul>
+      </v-window-item>
+    </v-window>
   </div>
 </template>
 
@@ -383,123 +352,5 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-panel { max-width: 900px; }
-.role-badge {
-  font-size: 0.875rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  display: inline-block;
-  margin-bottom: 1rem;
-}
-.role-badge.admin { background: var(--wm-primary); color: var(--wm-white); }
-.role-badge.moderator { background: #0ea5e9; color: white; }
-.tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
-.tabs button {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--wm-border);
-  background: var(--wm-bg-soft);
-  color: var(--wm-text);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.tabs button.active { background: var(--wm-primary); border-color: var(--wm-primary); }
-.section { margin-top: 1rem; }
-.loading, .empty { color: var(--wm-text-muted); }
-.success { color: #34d399; margin-top: 0.5rem; }
-.error { color: var(--wm-danger); margin-top: 0.5rem; }
-.pending-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.pending-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  border: 1px solid var(--wm-border);
-  border-radius: 8px;
-  background: var(--wm-bg-soft);
-}
-.pending-info .meta { display: block; font-size: 0.8rem; color: var(--wm-text-muted); }
-.pending-actions { display: flex; gap: 0.5rem; }
-.btn { padding: 0.35rem 0.75rem; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; }
-.btn.small { padding: 0.25rem 0.5rem; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn.danger { background: #dc2626; color: white; }
-.invite-form { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-.invite-form input {
-  flex: 1;
-  padding: 0.5rem;
-  border: 1px solid var(--wm-border);
-  border-radius: 6px;
-  background: var(--wm-bg-soft);
-  color: var(--wm-text);
-}
-.invites-list { list-style: none; padding: 0; }
-.invites-list li { padding: 0.5rem 0; border-bottom: 1px solid var(--wm-border); }
-
-.mt-2 { margin-top: 1.5rem; }
-.agent-nft-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
-.nft-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--wm-border);
-  border-radius: 8px;
-  background: var(--wm-bg-soft);
-}
-.nft-info { display: flex; flex-direction: column; gap: 0.25rem; }
-.nft-info .meta { font-size: 0.8rem; color: var(--wm-text-muted); word-break: break-all; }
-.nft-info .meta.verified { color: #34d399; }
-.nft-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
-.nft-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-.nft-form input {
-  padding: 0.5rem;
-  border: 1px solid var(--wm-border);
-  border-radius: 6px;
-  background: var(--wm-bg-soft);
-  color: var(--wm-text);
-  min-width: 140px;
-}
-.nft-form input[type="number"] { width: 120px; }
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-.modal {
-  background: var(--wm-bg-soft);
-  border: 1px solid var(--wm-border);
-  border-radius: 8px;
-  padding: 1.5rem;
-  max-width: 600px;
-  width: 90%;
-  max-height: 90vh;
-  overflow: auto;
-}
-.modal h4 { margin-top: 0; }
-.modal .hint { font-size: 0.8rem; color: var(--wm-text-muted); margin-bottom: 0.75rem; }
-.modal textarea {
-  width: 100%;
-  font-family: monospace;
-  font-size: 0.8rem;
-  padding: 0.5rem;
-  border: 1px solid var(--wm-border);
-  border-radius: 6px;
-  background: var(--wm-bg);
-  color: var(--wm-text);
-  margin-bottom: 0.75rem;
-}
-.modal .form-row { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
-.modal .form-row input { flex: 1; padding: 0.5rem; border: 1px solid var(--wm-border); border-radius: 6px; background: var(--wm-bg); color: var(--wm-text); }
-.modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+.border-b { border-bottom: 1px solid rgba(255,255,255,0.12); }
 </style>

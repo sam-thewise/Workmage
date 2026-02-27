@@ -1,27 +1,27 @@
 <template>
-  <div class="review-chain">
-    <router-link to="/admin" class="back">← Back to Admin</router-link>
-    <div v-if="loading" class="loading">Loading...</div>
+  <div class="review-chain mx-auto pa-4" style="max-width: 900px;">
+    <router-link to="/admin" class="text-medium-emphasis text-decoration-none d-inline-block mb-4">← Back to Admin</router-link>
+    <div v-if="loading" class="text-medium-emphasis py-4">Loading...</div>
     <div v-else-if="chain" class="review-content">
-      <h1>{{ chain.name }}</h1>
-      <p v-if="chain.description">{{ chain.description }}</p>
-      <div class="meta">
+      <h1 class="text-h4 mb-2">{{ chain.name }}</h1>
+      <p v-if="chain.description" class="text-body-2 text-medium-emphasis mb-3">{{ chain.description }}</p>
+      <div class="d-flex flex-wrap gap-3 text-body-2 text-medium-emphasis mb-4">
         <span>Status: {{ chain.status }}</span>
         <span>Approval: {{ chain.approval_status }}</span>
         <span>Expert ID: {{ chain.expert_id }}</span>
         <span>Category: {{ chain.category || '—' }}</span>
       </div>
-      <div class="definition-section">
-        <h3>Chain Definition</h3>
-        <pre class="definition-pre">{{ JSON.stringify(chain.definition, null, 2) }}</pre>
-      </div>
-      <p class="hint">Check for duplicates and verify included APIs/MCP usage is safe.</p>
-      <div class="actions">
-        <button @click="approve" class="btn primary">Approve</button>
-        <button @click="reject" class="btn danger">Reject</button>
+      <v-card variant="tonal" class="pa-4 mb-4">
+        <h3 class="text-subtitle-1 text-medium-emphasis mb-2">Chain Definition</h3>
+        <pre class="definition-pre pa-3 ma-0 text-body-2" style="background: rgba(0,0,0,0.2); border-radius: 8px; overflow: auto; max-height: 400px;">{{ JSON.stringify(chain.definition, null, 2) }}</pre>
+      </v-card>
+      <p class="text-body-2 text-medium-emphasis mb-4">Check for duplicates and verify included APIs/MCP usage is safe.</p>
+      <div class="d-flex gap-2">
+        <v-btn color="primary" @click="approve">Approve</v-btn>
+        <v-btn color="error" @click="reject">Reject</v-btn>
       </div>
     </div>
-    <p v-else class="error">Chain not found.</p>
+    <p v-else class="text-error py-4">Chain not found.</p>
   </div>
 </template>
 
@@ -69,26 +69,3 @@ async function reject() {
 
 onMounted(load)
 </script>
-
-<style scoped>
-.review-chain { max-width: 900px; }
-.back { color: var(--wm-text-muted); text-decoration: none; display: inline-block; margin-bottom: 1rem; }
-.back:hover { color: var(--wm-accent); }
-.loading, .error { color: var(--wm-text-muted); }
-.meta { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; font-size: 0.875rem; color: var(--wm-text-muted); }
-.definition-section { margin: 1.5rem 0; }
-.definition-pre {
-  background: var(--wm-bg);
-  padding: 1rem;
-  border-radius: 8px;
-  overflow-x: auto;
-  font-size: 0.8rem;
-  max-height: 420px;
-  overflow-y: auto;
-}
-.hint { font-size: 0.875rem; color: var(--wm-text-muted); margin: 1rem 0; }
-.actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn.danger { background: #dc2626; color: white; }
-</style>

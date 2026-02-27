@@ -1,48 +1,48 @@
 <template>
-  <div class="agent-detail">
-    <div v-if="loading" class="loading">Loading...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+  <div class="agent-detail mx-auto" style="max-width: 720px;">
+    <div v-if="loading" class="text-medium-emphasis py-4">Loading...</div>
+    <div v-else-if="error" class="text-error py-4">{{ error }}</div>
     <template v-else-if="agent">
-      <router-link to="/marketplace" class="back">← Back to Marketplace</router-link>
-      <h1>{{ agent.name }}</h1>
-      <p class="description">{{ agent.description || 'No description' }}</p>
-      <div class="meta">
-        <span class="price">${{ (agent.price_cents / 100).toFixed(2) }}</span>
-        <span v-if="agent.category" class="category">{{ agent.category }}</span>
-        <span v-if="agent.tags?.length" class="tags">{{ agent.tags.join(', ') }}</span>
+      <router-link to="/marketplace" class="text-medium-emphasis text-decoration-none d-inline-block mb-4">← Back to Marketplace</router-link>
+      <h1 class="text-h4 mb-2">{{ agent.name }}</h1>
+      <p class="text-body-1 text-medium-emphasis my-3">{{ agent.description || 'No description' }}</p>
+      <div class="d-flex flex-wrap gap-3 mb-6">
+        <span class="text-accent font-weight-bold text-h6">${{ (agent.price_cents / 100).toFixed(2) }}</span>
+        <span v-if="agent.category" class="text-body-2 text-medium-emphasis">{{ agent.category }}</span>
+        <span v-if="agent.tags?.length" class="text-body-2 text-medium-emphasis">{{ agent.tags.join(', ') }}</span>
       </div>
-      <div v-if="agent.manifest?.skills?.length" class="section">
-        <h3>Skills</h3>
-        <ul>
-          <li v-for="(s, i) in agent.manifest.skills" :key="i">
+      <v-card v-if="agent.manifest?.skills?.length" variant="tonal" class="pa-4 mb-4">
+        <h3 class="text-subtitle-1 text-medium-emphasis mb-2">Skills</h3>
+        <ul class="pa-0 ma-0" style="list-style: none;">
+          <li v-for="(s, i) in agent.manifest.skills" :key="i" class="py-1">
             {{ typeof s === 'object' ? s.name : s }}
           </li>
         </ul>
-      </div>
-      <div v-if="agent.manifest?.domains?.length" class="section">
-        <h3>Domains</h3>
-        <ul>
-          <li v-for="(d, i) in agent.manifest.domains" :key="i">
+      </v-card>
+      <v-card v-if="agent.manifest?.domains?.length" variant="tonal" class="pa-4 mb-6">
+        <h3 class="text-subtitle-1 text-medium-emphasis mb-2">Domains</h3>
+        <ul class="pa-0 ma-0" style="list-style: none;">
+          <li v-for="(d, i) in agent.manifest.domains" :key="i" class="py-1">
             {{ typeof d === 'object' ? d.name : d }}
           </li>
         </ul>
-      </div>
-      <div class="actions">
+      </v-card>
+      <div class="d-flex flex-wrap gap-3 mt-8">
         <template v-if="authStore.isAuthenticated">
-          <button
+          <v-btn
             v-if="!purchased && !purchasing"
+            color="primary"
+            :loading="purchaseLoading"
             @click="purchase"
-            class="btn primary"
-            :disabled="purchaseLoading"
           >
             {{ agent.price_cents === 0 ? 'Get Free' : `Purchase $${(agent.price_cents / 100).toFixed(2)}` }}
-          </button>
+          </v-btn>
           <template v-else-if="purchased">
-            <span class="purchased">✓ Purchased</span>
-            <router-link :to="`/run/${agent?.id}`" class="btn primary">Run Agent</router-link>
+            <span class="text-success font-weight-medium align-self-center">✓ Purchased</span>
+            <v-btn color="primary" :to="`/run/${agent?.id}`">Run Agent</v-btn>
           </template>
         </template>
-        <router-link v-else to="/login" class="btn primary">Login to Purchase</router-link>
+        <v-btn v-else color="primary" to="/login">Login to Purchase</v-btn>
       </div>
     </template>
   </div>
@@ -108,23 +108,3 @@ async function purchase() {
 onMounted(() => loadAgent())
 watch([agent, () => authStore.isAuthenticated], () => checkPurchase(), { immediate: true })
 </script>
-
-<style scoped>
-.agent-detail { max-width: 720px; }
-.back { color: var(--wm-text-muted); text-decoration: none; display: inline-block; margin-bottom: 1rem; }
-.back:hover { color: var(--wm-accent); }
-.description { color: var(--wm-text-muted); margin: 1rem 0; }
-.meta { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-.price { color: var(--wm-accent); font-weight: 600; font-size: 1.25rem; }
-.category, .tags { color: var(--wm-text-muted); font-size: 0.9rem; }
-.section { margin: 1.5rem 0; }
-.section h3 { font-size: 0.875rem; color: var(--wm-text-muted); margin-bottom: 0.5rem; }
-.section ul { list-style: none; padding: 0; }
-.section li { padding: 0.25rem 0; color: var(--wm-text-muted); }
-.btn { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; font-size: 1rem; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.purchased { color: #10b981; font-weight: 500; }
-.actions { margin-top: 2rem; }
-.error { color: var(--wm-danger); }
-</style>

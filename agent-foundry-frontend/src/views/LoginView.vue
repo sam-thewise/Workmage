@@ -1,27 +1,21 @@
 <template>
-  <div class="auth-form">
-    <img class="brand-logo" src="/branding/workmage-icon.png" alt="Workmage logo" />
-    <h2 class="brand-title">Workmage</h2>
-    <h1>Login</h1>
-    <div v-if="oauthProviders.google || oauthProviders.facebook || oauthProviders.x" class="oauth-buttons">
-      <a v-if="oauthProviders.google" :href="oauthUrls.google" class="oauth-btn google">Continue with Google</a>
-      <a v-if="oauthProviders.facebook" :href="oauthUrls.facebook" class="oauth-btn facebook">Continue with Facebook</a>
-      <a v-if="oauthProviders.x" :href="oauthUrls.x" class="oauth-btn x">Continue with X</a>
+  <div class="auth-form mx-auto pa-4" style="max-width: 400px;">
+    <img class="brand-logo d-block mx-auto mb-2" src="/branding/workmage-icon.png" alt="Workmage logo" />
+    <h2 class="text-h5 text-center mb-2">Workmage</h2>
+    <h1 class="text-h4 mb-6">Login</h1>
+    <div v-if="oauthProviders.google || oauthProviders.facebook || oauthProviders.x" class="oauth-buttons d-flex flex-column gap-2 mb-4">
+      <a v-if="oauthProviders.google" :href="oauthUrls.google" class="oauth-btn google v-btn v-btn--block v-btn--flat">Continue with Google</a>
+      <a v-if="oauthProviders.facebook" :href="oauthUrls.facebook" class="oauth-btn facebook v-btn v-btn--block v-btn--flat">Continue with Facebook</a>
+      <a v-if="oauthProviders.x" :href="oauthUrls.x" class="oauth-btn x v-btn v-btn--block v-btn--flat">Continue with X</a>
     </div>
-    <p v-if="oauthProviders.google || oauthProviders.facebook || oauthProviders.x" class="divider">— or —</p>
-    <form @submit.prevent="submit">
-      <div>
-        <label>Email</label>
-        <input v-model="email" type="email" required />
-      </div>
-      <div>
-        <label>Password</label>
-        <input v-model="password" type="password" required />
-      </div>
-      <p v-if="error" class="error">{{ error }}</p>
-      <button type="submit" :disabled="loading">Login</button>
-    </form>
-    <p>Don't have an account? <router-link to="/register">Register</router-link></p>
+    <p v-if="oauthProviders.google || oauthProviders.facebook || oauthProviders.x" class="text-center text-medium-emphasis my-4">— or —</p>
+    <v-form @submit.prevent="submit" class="d-flex flex-column gap-3">
+      <v-text-field v-model="email" type="email" label="Email" required density="comfortable" />
+      <v-text-field v-model="password" type="password" label="Password" required density="comfortable" />
+      <p v-if="error" class="text-error text-body-2">{{ error }}</p>
+      <v-btn type="submit" color="primary" block :loading="loading">Login</v-btn>
+    </v-form>
+    <p class="text-center mt-4">Don't have an account? <router-link to="/register" class="text-accent text-decoration-none">Register</router-link></p>
   </div>
 </template>
 
@@ -76,45 +70,14 @@ async function submit() {
 </script>
 
 <style scoped>
-.auth-form {
-  max-width: 400px;
-  margin: 0 auto;
-}
-.brand-logo {
-  width: 88px;
-  display: block;
-  margin: 0 auto 0.5rem;
-}
-.brand-title {
-  text-align: center;
-  margin-bottom: 1rem;
-}
-.auth-form h1 {
-  margin-bottom: 1.5rem;
-}
-.auth-form div {
-  margin-bottom: 1rem;
-}
-.auth-form label {
-  display: block;
-  margin-bottom: 0.25rem;
-  color: var(--wm-text-muted);
-}
-.auth-form input {
-  width: 100%;
-}
-.auth-form button {
-  width: 100%;
-  margin-top: 0.5rem;
-}
-.oauth-buttons { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.brand-logo { width: 88px; }
 .oauth-btn {
   display: block;
   padding: 0.6rem 1rem;
   border-radius: 6px;
   text-align: center;
   text-decoration: none;
-  color: var(--wm-white);
+  color: #fff;
   border: none;
   cursor: pointer;
   font-size: 0.95rem;
@@ -125,9 +88,4 @@ async function submit() {
 .oauth-btn.facebook:hover { background: #166fe5; }
 .oauth-btn.x { background: #000; }
 .oauth-btn.x:hover { background: #333; }
-.divider { text-align: center; color: var(--wm-text-muted); margin: 1rem 0; }
-.error {
-  color: var(--wm-danger);
-  margin: 0.5rem 0;
-}
 </style>

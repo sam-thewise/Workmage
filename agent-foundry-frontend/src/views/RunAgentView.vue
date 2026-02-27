@@ -1,64 +1,48 @@
 <template>
-  <div class="run-agent">
-    <h1>Run Agent</h1>
-    <div v-if="!agent && agentId" class="loading">Loading agent...</div>
+  <div class="run-agent mx-auto" style="max-width: 720px;">
+    <h1 class="text-h4 mb-4">Run Agent</h1>
+    <div v-if="!agent && agentId" class="text-medium-emphasis my-4">Loading agent...</div>
     <div v-else-if="!agent && !agentId" class="pick-agent">
-      <h2>Choose an agent to run</h2>
-      <p class="chain-hint"><router-link to="/chains">Or build a chain</router-link> of agents.</p>
-      <div v-if="purchasesLoading">Loading...</div>
-      <ul v-else class="purchase-list">
-        <li v-for="p in purchases" :key="p.agent_id">
-          <router-link :to="`/run/${p.agent_id}`">{{ p.agent_name || `Agent #${p.agent_id}` }}</router-link>
+      <h2 class="text-h6 mb-2">Choose an agent to run</h2>
+      <p class="text-body-2 text-medium-emphasis mb-4">
+        <router-link to="/chains" class="text-accent text-decoration-none">Or build a chain</router-link> of agents.
+      </p>
+      <div v-if="purchasesLoading" class="mb-4">Loading...</div>
+      <ul v-else class="purchase-list pa-0 ma-0 mb-4" style="list-style: none;">
+        <li v-for="p in purchases" :key="p.agent_id" class="py-2">
+          <router-link :to="`/run/${p.agent_id}`" class="text-accent text-decoration-none">{{ p.agent_name || `Agent #${p.agent_id}` }}</router-link>
         </li>
       </ul>
-      <p v-if="!purchasesLoading && purchases.length === 0">No agents purchased. <router-link to="/marketplace">Browse marketplace</router-link>.</p>
+      <p v-if="!purchasesLoading && purchases.length === 0" class="text-medium-emphasis">No agents purchased. <router-link to="/marketplace" class="text-accent text-decoration-none">Browse marketplace</router-link>.</p>
     </div>
-    <div v-else-if="!agent" class="error">Agent not found.</div>
-    <form v-else @submit.prevent="run" class="run-form">
+    <div v-else-if="!agent" class="text-error my-4">Agent not found.</div>
+    <v-form v-else @submit.prevent="run" class="d-flex flex-column gap-4 mt-4">
       <div class="agent-info">
-        <h2>{{ agent.name }}</h2>
-        <p>{{ agent.description }}</p>
+        <h2 class="text-h6 mb-1">{{ agent.name }}</h2>
+        <p class="text-body-2 text-medium-emphasis">{{ agent.description }}</p>
       </div>
-      <div class="field">
-        <label>Input</label>
-        <textarea v-model="userInput" rows="5" placeholder="Enter your prompt or question..." required></textarea>
-      </div>
-      <div class="field">
-        <label>Model</label>
-        <select v-model="model">
-          <option value="openai/gpt-4">OpenAI GPT-4</option>
-          <option value="openai/gpt-3.5-turbo">OpenAI GPT-3.5</option>
-          <option value="anthropic/claude-3-sonnet-20240229">Anthropic Claude 3 Sonnet</option>
-          <option value="ollama/llama2">Ollama Llama 2 (local)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>
-          <input type="checkbox" v-model="useByok" />
-          Use my API key (BYOK)
-        </label>
-        <p v-if="useByok" class="hint">
+      <v-textarea v-model="userInput" label="Input" rows="5" placeholder="Enter your prompt or question..." required density="comfortable" />
+      <v-select v-model="model" :items="modelOptions" item-title="title" item-value="value" label="Model" density="comfortable" />
+      <div>
+        <v-checkbox v-model="useByok" label="Use my API key (BYOK)" density="compact" hide-details />
+        <p v-if="useByok" class="text-caption text-medium-emphasis mt-1">
           Make sure you've saved your API key for {{ model.split('/')[0] }}.
-          <router-link to="/settings/keys">Manage keys</router-link>
+          <router-link to="/settings/keys" class="text-accent text-decoration-none">Manage keys</router-link>
         </p>
         <template v-else>
-          <p v-if="estimate" class="estimate">Platform estimate: ~${{ estimate.estimated_cost_usd != null ? estimate.estimated_cost_usd.toFixed(4) : 'N/A' }}</p>
-          <p v-else-if="subscription" class="quota">Runs remaining: {{ subscription.runs_remaining }}/{{ subscription.runs_per_period }} ({{ subscription.tier }} tier)</p>
+          <p v-if="estimate" class="text-caption text-accent mt-1">Platform estimate: ~${{ estimate.estimated_cost_usd != null ? estimate.estimated_cost_usd.toFixed(4) : 'N/A' }}</p>
+          <p v-else-if="subscription" class="text-caption text-medium-emphasis mt-1">Runs remaining: {{ subscription.runs_remaining }}/{{ subscription.runs_per_period }} ({{ subscription.tier }} tier)</p>
         </template>
       </div>
-      <div class="actions">
-        <button type="submit" class="btn primary" :disabled="running">
-          {{ running ? 'Running...' : 'Run' }}
-        </button>
-      </div>
-    </form>
-    <div v-if="result" class="result">
-      <h3>Result</h3>
-      <pre class="output">{{ result.content || result.error || 'No output' }}</pre>
-      <div v-if="result.usage" class="usage">
+      <v-btn type="submit" color="primary" :loading="running">{{ running ? 'Running...' : 'Run' }}</v-btn>
+    </v-form>
+    <v-card v-if="result" variant="tonal" class="pa-4 mt-8">
+      <h3 class="text-h6 mb-2">Result</h3>
+      <pre class="output text-body-2 pa-0 ma-0" style="white-space: pre-wrap; word-break: break-word;">{{ result.content || result.error || 'No output' }}</pre>
+      <div v-if="result.usage" class="text-caption text-medium-emphasis mt-2">
         Tokens: {{ result.usage.prompt_tokens }} prompt, {{ result.usage.completion_tokens }} completion
       </div>
-    </div>
+    </v-card>
   </div>
 </template>
 
@@ -67,6 +51,13 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+
+const modelOptions = [
+  { title: 'OpenAI GPT-4', value: 'openai/gpt-4' },
+  { title: 'OpenAI GPT-3.5', value: 'openai/gpt-3.5-turbo' },
+  { title: 'Anthropic Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet-20240229' },
+  { title: 'Ollama Llama 2 (local)', value: 'ollama/llama2' },
+]
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -193,32 +184,3 @@ watch(() => route.params.id, (id) => {
   result.value = null
 })
 </script>
-
-<style scoped>
-.run-agent { max-width: 720px; }
-.loading, .error { color: var(--wm-text-muted); margin: 1rem 0; }
-.error { color: var(--wm-danger); }
-.run-form { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
-.agent-info h2 { font-size: 1.25rem; margin-bottom: 0.25rem; }
-.agent-info p { color: var(--wm-text-muted); font-size: 0.9rem; }
-.field label { display: block; margin-bottom: 0.25rem; }
-.field textarea, .field select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
-.hint { font-size: 0.8rem; color: var(--wm-text-muted); margin-top: 0.25rem; }
-.btn { padding: 0.75rem 1.5rem; border-radius: 8px; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.result { margin-top: 2rem; padding: 1rem; background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border); }
-.result h3 { margin-bottom: 0.5rem; }
-.output { white-space: pre-wrap; word-break: break-word; color: var(--wm-text); font-size: 0.9rem; }
-.usage { margin-top: 0.5rem; font-size: 0.8rem; color: var(--wm-text-muted); }
-.estimate { font-size: 0.85rem; color: var(--wm-accent); margin-top: 0.25rem; }
-.quota { font-size: 0.85rem; color: var(--wm-text-muted); margin-top: 0.25rem; }
-.pick-agent h2 { font-size: 1rem; margin-bottom: 0.5rem; }
-.chain-hint { font-size: 0.9rem; color: var(--wm-text-muted); margin-bottom: 1rem; }
-.chain-hint a { color: var(--wm-accent); text-decoration: none; }
-.chain-hint a:hover { text-decoration: underline; }
-.purchase-list { list-style: none; padding: 0; }
-.purchase-list li { margin: 0.5rem 0; }
-.purchase-list a { color: var(--wm-accent); text-decoration: none; }
-.purchase-list a:hover { text-decoration: underline; }
-</style>

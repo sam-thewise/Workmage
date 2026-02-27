@@ -1,7 +1,7 @@
 <template>
-  <div class="auth-callback">
-    <p v-if="loading">Completing sign in...</p>
-    <p v-else-if="error" class="error">{{ error }}</p>
+  <div class="auth-callback mx-auto text-center pa-8" style="max-width: 400px;">
+    <p v-if="loading" class="text-medium-emphasis">Completing sign in...</p>
+    <p v-else-if="error" class="text-error">{{ error }}</p>
   </div>
 </template>
 
@@ -38,12 +38,3 @@ onMounted(() => {
   }
 })
 </script>
-
-<style scoped>
-.auth-callback {
-  max-width: 400px;
-  margin: 4rem auto;
-  text-align: center;
-}
-.error { color: #f87171; }
-</style>

@@ -1,19 +1,19 @@
 <template>
   <div class="dashboard">
-    <img class="brand-logo" src="/branding/workmage-icon.png" alt="Workmage logo" />
-    <h2 class="brand-title">Workmage</h2>
-    <h1>Dashboard</h1>
-    <p>Welcome, {{ authStore.user?.email }}</p>
-    <p v-if="authStore.user?.role === 'expert'">
-      <router-link to="/dashboard/agents">Manage your agents</router-link>
-      &middot; <router-link to="/dashboard/settings">Settings</router-link>
-      &middot; <router-link to="/run">Run Agent</router-link>
-      &middot; <router-link to="/chains">Chains</router-link>
+    <img class="brand-logo mb-2" src="/branding/workmage-icon.png" alt="Workmage logo" />
+    <h2 class="text-h5 mb-2">Workmage</h2>
+    <h1 class="text-h4 mb-2">Dashboard</h1>
+    <p class="mb-3">Welcome, {{ authStore.user?.email }}</p>
+    <p v-if="authStore.user?.role === 'expert'" class="mb-4">
+      <router-link to="/dashboard/agents" class="text-accent text-decoration-none">Manage your agents</router-link>
+      &middot; <router-link to="/dashboard/settings" class="text-accent text-decoration-none">Settings</router-link>
+      &middot; <router-link to="/run" class="text-accent text-decoration-none">Run Agent</router-link>
+      &middot; <router-link to="/chains" class="text-accent text-decoration-none">Chains</router-link>
     </p>
-    <p v-else>
-      You can browse and run agents from the <router-link to="/marketplace">Marketplace</router-link>.
-      <router-link to="/run">Run Agent</router-link>
-      &middot; <router-link to="/chains">Chains</router-link>
+    <p v-else class="mb-4">
+      You can browse and run agents from the <router-link to="/marketplace" class="text-accent text-decoration-none">Marketplace</router-link>.
+      <router-link to="/run" class="text-accent text-decoration-none">Run Agent</router-link>
+      &middot; <router-link to="/chains" class="text-accent text-decoration-none">Chains</router-link>
     </p>
     <router-view />
   </div>
@@ -34,9 +34,5 @@ onMounted(async () => {
 .brand-logo {
   width: 88px;
   display: block;
-  margin-bottom: 0.5rem;
-}
-.brand-title {
-  margin-bottom: 1rem;
 }
 </style>

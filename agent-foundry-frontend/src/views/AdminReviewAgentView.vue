@@ -1,27 +1,27 @@
 <template>
-  <div class="review-agent">
-    <router-link to="/admin" class="back">← Back to Admin</router-link>
-    <div v-if="loading" class="loading">Loading...</div>
+  <div class="review-agent mx-auto pa-4" style="max-width: 900px;">
+    <router-link to="/admin" class="text-medium-emphasis text-decoration-none d-inline-block mb-4">← Back to Admin</router-link>
+    <div v-if="loading" class="text-medium-emphasis py-4">Loading...</div>
     <div v-else-if="agent" class="review-content">
-      <h1>{{ agent.name }}</h1>
-      <p v-if="agent.description">{{ agent.description }}</p>
-      <div class="meta">
+      <h1 class="text-h4 mb-2">{{ agent.name }}</h1>
+      <p v-if="agent.description" class="text-body-2 text-medium-emphasis mb-3">{{ agent.description }}</p>
+      <div class="d-flex flex-wrap gap-3 text-body-2 text-medium-emphasis mb-4">
         <span>Status: {{ agent.status }}</span>
         <span>Approval: {{ agent.approval_status }}</span>
         <span>Expert ID: {{ agent.expert_id }}</span>
         <span>Category: {{ agent.category || '—' }}</span>
       </div>
-      <div class="manifest-section">
-        <h3>Manifest (APIs / MCP)</h3>
-        <pre class="manifest-pre">{{ JSON.stringify(agent.manifest, null, 2) }}</pre>
-      </div>
-      <p class="hint">Check for duplicates and verify APIs/MCPs are safe.</p>
-      <div class="actions">
-        <button @click="approve" class="btn primary">Approve</button>
-        <button @click="reject" class="btn danger">Reject</button>
+      <v-card variant="tonal" class="pa-4 mb-4">
+        <h3 class="text-subtitle-1 text-medium-emphasis mb-2">Manifest (APIs / MCP)</h3>
+        <pre class="manifest-pre pa-3 ma-0 text-body-2" style="background: rgba(0,0,0,0.2); border-radius: 8px; overflow: auto; max-height: 400px;">{{ JSON.stringify(agent.manifest, null, 2) }}</pre>
+      </v-card>
+      <p class="text-body-2 text-medium-emphasis mb-4">Check for duplicates and verify APIs/MCPs are safe.</p>
+      <div class="d-flex gap-2">
+        <v-btn color="primary" @click="approve">Approve</v-btn>
+        <v-btn color="error" @click="reject">Reject</v-btn>
       </div>
     </div>
-    <p v-else class="error">Agent not found.</p>
+    <p v-else class="text-error py-4">Agent not found.</p>
   </div>
 </template>
 
@@ -69,26 +69,3 @@ async function reject() {
 
 onMounted(load)
 </script>
-
-<style scoped>
-.review-agent { max-width: 900px; }
-.back { color: var(--wm-text-muted); text-decoration: none; display: inline-block; margin-bottom: 1rem; }
-.back:hover { color: var(--wm-accent); }
-.loading, .error { color: var(--wm-text-muted); }
-.meta { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; font-size: 0.875rem; color: var(--wm-text-muted); }
-.manifest-section { margin: 1.5rem 0; }
-.manifest-pre {
-  background: var(--wm-bg);
-  padding: 1rem;
-  border-radius: 8px;
-  overflow-x: auto;
-  font-size: 0.8rem;
-  max-height: 400px;
-  overflow-y: auto;
-}
-.hint { font-size: 0.875rem; color: var(--wm-text-muted); margin: 1rem 0; }
-.actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
-.btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
-.btn.danger { background: #dc2626; color: white; }
-</style>
