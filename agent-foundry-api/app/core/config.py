@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    PROJECT_NAME: str = "Agent Foundry AI"
+    PROJECT_NAME: str = "Workmage"
     API_V1_STR: str = "/api/v1"
 
     # Database

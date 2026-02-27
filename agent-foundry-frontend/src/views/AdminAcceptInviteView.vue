@@ -66,7 +66,7 @@ onMounted(() => {
 <style scoped>
 .accept-invite { max-width: 400px; margin: 4rem auto; text-align: center; }
 .message p, .success p, .error p { margin-bottom: 1rem; }
-.btn { display: inline-block; padding: 0.5rem 1rem; background: #7c3aed; color: white; border-radius: 6px; text-decoration: none; }
+.btn { display: inline-block; padding: 0.5rem 1rem; background: var(--wm-primary); color: var(--wm-white); border-radius: 6px; text-decoration: none; }
 .success { color: #34d399; }
-.error { color: #f87171; }
+.error { color: var(--wm-danger); }
 </style>

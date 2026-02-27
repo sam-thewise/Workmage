@@ -48,16 +48,16 @@ onMounted(loadChains)
 
 <style scoped>
 .chains-list { max-width: 640px; }
-.subtitle { color: #94a3b8; margin: 0.5rem 0 1rem; font-size: 0.95rem; }
+.subtitle { color: var(--wm-text-muted); margin: 0.5rem 0 1rem; font-size: 0.95rem; }
 .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 8px; text-decoration: none; margin-bottom: 1rem; }
-.btn.primary { background: #7c3aed; color: white; }
-.loading { color: #94a3b8; }
-.empty { list-style: none; padding: 0; color: #94a3b8; }
-.empty a { color: #7c3aed; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
+.loading { color: var(--wm-text-muted); }
+.empty { list-style: none; padding: 0; color: var(--wm-text-muted); }
+.empty a { color: var(--wm-accent); }
 .chain-list { list-style: none; padding: 0; }
 .chain-list li { margin-bottom: 0.5rem; }
-.chain-card { display: flex; flex-direction: column; padding: 1rem; background: #1e293b; border-radius: 8px; border: 1px solid #334155; text-decoration: none; color: inherit; }
-.chain-card:hover { border-color: #7c3aed; }
+.chain-card { display: flex; flex-direction: column; padding: 1rem; background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border); text-decoration: none; color: inherit; }
+.chain-card:hover { border-color: var(--wm-accent); }
 .chain-card .name { font-weight: 500; }
-.chain-card .meta { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+.chain-card .meta { font-size: 0.8rem; color: var(--wm-text-muted); margin-top: 0.25rem; }
 </style>

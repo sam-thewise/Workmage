@@ -196,29 +196,29 @@ watch(() => route.params.id, (id) => {
 
 <style scoped>
 .run-agent { max-width: 720px; }
-.loading, .error { color: #94a3b8; margin: 1rem 0; }
-.error { color: #f87171; }
+.loading, .error { color: var(--wm-text-muted); margin: 1rem 0; }
+.error { color: var(--wm-danger); }
 .run-form { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
 .agent-info h2 { font-size: 1.25rem; margin-bottom: 0.25rem; }
-.agent-info p { color: #94a3b8; font-size: 0.9rem; }
+.agent-info p { color: var(--wm-text-muted); font-size: 0.9rem; }
 .field label { display: block; margin-bottom: 0.25rem; }
-.field textarea, .field select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #444; background: #1a1a2e; color: #fff; }
-.hint { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+.field textarea, .field select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
+.hint { font-size: 0.8rem; color: var(--wm-text-muted); margin-top: 0.25rem; }
 .btn { padding: 0.75rem 1.5rem; border-radius: 8px; border: none; cursor: pointer; }
-.btn.primary { background: #7c3aed; color: white; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.result { margin-top: 2rem; padding: 1rem; background: #1e293b; border-radius: 8px; border: 1px solid #334155; }
+.result { margin-top: 2rem; padding: 1rem; background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border); }
 .result h3 { margin-bottom: 0.5rem; }
-.output { white-space: pre-wrap; word-break: break-word; color: #e2e8f0; font-size: 0.9rem; }
-.usage { margin-top: 0.5rem; font-size: 0.8rem; color: #64748b; }
-.estimate { font-size: 0.85rem; color: #7c3aed; margin-top: 0.25rem; }
-.quota { font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; }
+.output { white-space: pre-wrap; word-break: break-word; color: var(--wm-text); font-size: 0.9rem; }
+.usage { margin-top: 0.5rem; font-size: 0.8rem; color: var(--wm-text-muted); }
+.estimate { font-size: 0.85rem; color: var(--wm-accent); margin-top: 0.25rem; }
+.quota { font-size: 0.85rem; color: var(--wm-text-muted); margin-top: 0.25rem; }
 .pick-agent h2 { font-size: 1rem; margin-bottom: 0.5rem; }
-.chain-hint { font-size: 0.9rem; color: #94a3b8; margin-bottom: 1rem; }
-.chain-hint a { color: #7c3aed; text-decoration: none; }
+.chain-hint { font-size: 0.9rem; color: var(--wm-text-muted); margin-bottom: 1rem; }
+.chain-hint a { color: var(--wm-accent); text-decoration: none; }
 .chain-hint a:hover { text-decoration: underline; }
 .purchase-list { list-style: none; padding: 0; }
 .purchase-list li { margin: 0.5rem 0; }
-.purchase-list a { color: #7c3aed; text-decoration: none; }
+.purchase-list a { color: var(--wm-accent); text-decoration: none; }
 .purchase-list a:hover { text-decoration: underline; }
 </style>

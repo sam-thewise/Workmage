@@ -87,20 +87,20 @@ onMounted(() => {
 <style scoped>
 .agent-management { max-width: 800px; }
 .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; border: none; cursor: pointer; margin-right: 0.5rem; }
-.btn.primary { background: #7c3aed; color: white; }
-.btn.secondary { background: #444; color: white; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
+.btn.secondary { background: var(--wm-bg-soft); color: var(--wm-white); border: 1px solid var(--wm-border); }
 .btn.small { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
 .agent-list { list-style: none; padding: 0; }
-.agent-item { display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem; border: 1px solid #333; border-radius: 8px; margin-bottom: 0.5rem; }
+.agent-item { display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem; border: 1px solid var(--wm-border); border-radius: 8px; margin-bottom: 0.5rem; }
 .agent-info { flex: 1; }
 .agent-name { font-weight: 600; margin-right: 0.5rem; }
 .agent-status { font-size: 0.75rem; padding: 0.125rem 0.5rem; border-radius: 4px; }
 .agent-status.listed { background: #065f46; color: #a7f3d0; }
-.agent-status.draft { background: #444; color: #aaa; }
+.agent-status.draft { background: var(--wm-border); color: var(--wm-white); }
 .agent-status.pending_review { background: #92400e; color: #fde68a; }
 .agent-status.rejected { background: #7f1d1d; color: #fecaca; }
-.rejection-reason { display: block; font-size: 0.8rem; color: #f87171; margin-top: 0.25rem; }
-.agent-desc { display: block; color: #888; font-size: 0.875rem; margin-top: 0.25rem; }
+.rejection-reason { display: block; font-size: 0.8rem; color: var(--wm-danger); margin-top: 0.25rem; }
+.agent-desc { display: block; color: var(--wm-text-muted); font-size: 0.875rem; margin-top: 0.25rem; }
 .agent-actions { display: flex; gap: 0.5rem; }
-.loading { color: #888; }
+.loading { color: var(--wm-text-muted); }
 </style>

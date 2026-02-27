@@ -1,32 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Libre+Caslon+Text:wght@400;700&display=swap');
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
+:root {
+  --wm-font-body: 'Golos Text', system-ui, -apple-system, sans-serif;
+  --wm-font-heading: 'Libre Caslon Text', Georgia, serif;
+  --wm-white: #fefefe;
+  --wm-primary: #190056;
+  --wm-accent: #608bf7;
+  --wm-surface: #fffdec;
+  --wm-surface-alt: #fffbd7;
+  --wm-bg: #120633;
+  --wm-bg-soft: #1d0c5a;
+  --wm-text: #fefefe;
+  --wm-text-muted: #d7d3ee;
+  --wm-border: #4f3b99;
+  --wm-danger: #f87171;
+}
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0f0f1a;
-  color: #e2e8f0;
+  font-family: var(--wm-font-body);
+  background: var(--wm-bg);
+  color: var(--wm-text);
   min-height: 100vh;
 }
+h1, h2, h3, h4, h5, h6, .brand, .brand span {
+  font-family: var(--wm-font-heading);
+}
 a {
-  color: #818cf8;
+  color: var(--wm-accent);
 }
 button {
-  background: #7c3aed;
-  color: white;
+  background: var(--wm-primary);
+  color: var(--wm-white);
   border: none;
   padding: 0.5rem 1rem;
   border-radius: 6px;
   cursor: pointer;
 }
 button:hover {
-  background: #6d28d9;
+  background: var(--wm-accent);
 }
 input {
   padding: 0.5rem;
   border-radius: 6px;
-  border: 1px solid #334155;
-  background: #1e293b;
-  color: #e2e8f0;
+  border: 1px solid var(--wm-border);
+  background: var(--wm-bg-soft);
+  color: var(--wm-text);
 }

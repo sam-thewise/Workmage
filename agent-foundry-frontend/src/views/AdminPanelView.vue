@@ -229,47 +229,47 @@ onMounted(() => {
   display: inline-block;
   margin-bottom: 1rem;
 }
-.role-badge.admin { background: #7c3aed; color: white; }
+.role-badge.admin { background: var(--wm-primary); color: var(--wm-white); }
 .role-badge.moderator { background: #0ea5e9; color: white; }
 .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
 .tabs button {
   padding: 0.5rem 1rem;
-  border: 1px solid #334155;
-  background: #1e293b;
-  color: #e2e8f0;
+  border: 1px solid var(--wm-border);
+  background: var(--wm-bg-soft);
+  color: var(--wm-text);
   border-radius: 6px;
   cursor: pointer;
 }
-.tabs button.active { background: #7c3aed; border-color: #7c3aed; }
+.tabs button.active { background: var(--wm-primary); border-color: var(--wm-primary); }
 .section { margin-top: 1rem; }
-.loading, .empty { color: #94a3b8; }
+.loading, .empty { color: var(--wm-text-muted); }
 .success { color: #34d399; margin-top: 0.5rem; }
-.error { color: #f87171; margin-top: 0.5rem; }
+.error { color: var(--wm-danger); margin-top: 0.5rem; }
 .pending-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .pending-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  border: 1px solid #334155;
+  border: 1px solid var(--wm-border);
   border-radius: 8px;
-  background: #1e293b;
+  background: var(--wm-bg-soft);
 }
-.pending-info .meta { display: block; font-size: 0.8rem; color: #64748b; }
+.pending-info .meta { display: block; font-size: 0.8rem; color: var(--wm-text-muted); }
 .pending-actions { display: flex; gap: 0.5rem; }
 .btn { padding: 0.35rem 0.75rem; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; }
 .btn.small { padding: 0.25rem 0.5rem; }
-.btn.primary { background: #7c3aed; color: white; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
 .btn.danger { background: #dc2626; color: white; }
 .invite-form { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
 .invite-form input {
   flex: 1;
   padding: 0.5rem;
-  border: 1px solid #334155;
+  border: 1px solid var(--wm-border);
   border-radius: 6px;
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--wm-bg-soft);
+  color: var(--wm-text);
 }
 .invites-list { list-style: none; padding: 0; }
-.invites-list li { padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+.invites-list li { padding: 0.5rem 0; border-bottom: 1px solid var(--wm-border); }
 </style>

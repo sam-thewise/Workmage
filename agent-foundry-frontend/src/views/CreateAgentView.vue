@@ -167,18 +167,18 @@ onMounted(() => {
 .create-agent { max-width: 720px; }
 .agent-form { display: flex; flex-direction: column; gap: 1rem; }
 .field label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
-.field textarea, .field input { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #444; background: #1a1a2e; color: #fff; }
+.field textarea, .field input { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
 .validation { padding: 0.5rem; border-radius: 6px; margin-top: 0.25rem; }
 .validation.valid { background: #065f46; color: #a7f3d0; }
 .validation.invalid { background: #7f1d1d; color: #fecaca; }
 .validation ul { margin: 0.25rem 0 0 1rem; }
-.commission-breakdown { margin-top: 0.5rem; padding: 0.75rem; background: #0f172a; border-radius: 6px; font-size: 0.9rem; }
+.commission-breakdown { margin-top: 0.5rem; padding: 0.75rem; background: var(--wm-bg); border-radius: 6px; font-size: 0.9rem; }
 .commission-breakdown p { margin: 0.25rem 0; }
-.commission-breakdown .platform-fee { color: #94a3b8; }
+.commission-breakdown .platform-fee { color: var(--wm-text-muted); }
 .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; border: none; cursor: pointer; }
-.btn.primary { background: #7c3aed; color: white; }
-.btn.secondary { background: #444; color: white; margin-left: 0.5rem; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
+.btn.secondary { background: var(--wm-bg-soft); color: var(--wm-white); margin-left: 0.5rem; border: 1px solid var(--wm-border); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .actions { display: flex; align-items: center; }
-.error { color: #f87171; margin-top: 1rem; }
+.error { color: var(--wm-danger); margin-top: 1rem; }
 </style>

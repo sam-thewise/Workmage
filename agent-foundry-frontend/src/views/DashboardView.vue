@@ -1,5 +1,7 @@
 <template>
   <div class="dashboard">
+    <img class="brand-logo" src="/branding/workmage-icon.png" alt="Workmage logo" />
+    <h2 class="brand-title">Workmage</h2>
     <h1>Dashboard</h1>
     <p>Welcome, {{ authStore.user?.email }}</p>
     <p v-if="authStore.user?.role === 'expert'">
@@ -27,3 +29,14 @@ onMounted(async () => {
   await authStore.fetchUser()
 })
 </script>
+
+<style scoped>
+.brand-logo {
+  width: 88px;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.brand-title {
+  margin-bottom: 1rem;
+}
+</style>

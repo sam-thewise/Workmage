@@ -29,9 +29,9 @@ function toggleInteractive() {
   display: flex;
   gap: 2px;
   padding: 4px;
-  background: #1e293b;
+  background: var(--wm-bg-soft);
   border-radius: 6px;
-  border: 1px solid #334155;
+  border: 1px solid var(--wm-border);
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
@@ -41,8 +41,8 @@ function toggleInteractive() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--wm-border);
+  color: var(--wm-text);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -52,7 +52,7 @@ function toggleInteractive() {
 }
 
 .flow-control-btn:hover:not(:disabled) {
-  background: #475569;
+  background: var(--wm-primary);
 }
 
 .flow-control-btn:disabled {

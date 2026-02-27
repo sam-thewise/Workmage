@@ -58,7 +58,7 @@ onMounted(async () => {
 <style scoped>
 .purchase-success { text-align: center; padding: 2rem; }
 .purchase-success h1 { margin-bottom: 1rem; }
-.btn { display: inline-block; padding: 0.75rem 1.5rem; margin: 0.5rem; border-radius: 8px; text-decoration: none; border: 1px solid #444; color: #e2e8f0; }
-.btn.primary { background: #7c3aed; border-color: #7c3aed; color: white; }
-.error { color: #f87171; margin: 1rem 0; }
+.btn { display: inline-block; padding: 0.75rem 1.5rem; margin: 0.5rem; border-radius: 8px; text-decoration: none; border: 1px solid var(--wm-border); color: var(--wm-text); }
+.btn.primary { background: var(--wm-primary); border-color: var(--wm-primary); color: var(--wm-white); }
+.error { color: var(--wm-danger); margin: 1rem 0; }
 </style>

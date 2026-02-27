@@ -71,10 +71,22 @@ async def stripe_connect_onboard(
             account = stripe.Account.create(
                 type="express",
                 country="US",
-                capabilities={"card_payments": {"requested": True}},
+                capabilities={
+                    "card_payments": {"requested": True},
+                    "transfers": {"requested": True},
+                },
             )
             profile.stripe_connect_account_id = account.id
             await db.commit()
+        else:
+            # Existing accounts created before this change may only have card_payments requested.
+            stripe.Account.modify(
+                profile.stripe_connect_account_id,
+                capabilities={
+                    "card_payments": {"requested": True},
+                    "transfers": {"requested": True},
+                },
+            )
         return_url = f"{settings.FRONTEND_URL}/dashboard/settings"
         refresh_url = f"{settings.FRONTEND_URL}/dashboard/settings"
         link = stripe.AccountLink.create(

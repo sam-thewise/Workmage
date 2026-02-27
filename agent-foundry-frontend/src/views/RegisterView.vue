@@ -1,5 +1,7 @@
 <template>
   <div class="auth-form">
+    <img class="brand-logo" src="/branding/workmage-icon.png" alt="Workmage logo" />
+    <h2 class="brand-title">Workmage</h2>
     <h1>Register</h1>
     <form @submit.prevent="submit">
       <div>
@@ -56,6 +58,15 @@ async function submit() {
   max-width: 400px;
   margin: 0 auto;
 }
+.brand-logo {
+  width: 88px;
+  display: block;
+  margin: 0 auto 0.5rem;
+}
+.brand-title {
+  text-align: center;
+  margin-bottom: 1rem;
+}
 .auth-form h1 {
   margin-bottom: 1.5rem;
 }
@@ -65,7 +76,7 @@ async function submit() {
 .auth-form label {
   display: block;
   margin-bottom: 0.25rem;
-  color: #94a3b8;
+  color: var(--wm-text-muted);
 }
 .auth-form input,
 .auth-form select {
@@ -74,16 +85,16 @@ async function submit() {
 .auth-form select {
   padding: 0.5rem;
   border-radius: 6px;
-  border: 1px solid #334155;
-  background: #1e293b;
-  color: #e2e8f0;
+  border: 1px solid var(--wm-border);
+  background: var(--wm-bg-soft);
+  color: var(--wm-text);
 }
 .auth-form button {
   width: 100%;
   margin-top: 0.5rem;
 }
 .error {
-  color: #f87171;
+  color: var(--wm-danger);
   margin: 0.5rem 0;
 }
 </style>

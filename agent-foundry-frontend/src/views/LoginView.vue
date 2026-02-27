@@ -1,5 +1,7 @@
 <template>
   <div class="auth-form">
+    <img class="brand-logo" src="/branding/workmage-icon.png" alt="Workmage logo" />
+    <h2 class="brand-title">Workmage</h2>
     <h1>Login</h1>
     <div v-if="oauthProviders.google || oauthProviders.facebook || oauthProviders.x" class="oauth-buttons">
       <a v-if="oauthProviders.google" :href="oauthUrls.google" class="oauth-btn google">Continue with Google</a>
@@ -78,6 +80,15 @@ async function submit() {
   max-width: 400px;
   margin: 0 auto;
 }
+.brand-logo {
+  width: 88px;
+  display: block;
+  margin: 0 auto 0.5rem;
+}
+.brand-title {
+  text-align: center;
+  margin-bottom: 1rem;
+}
 .auth-form h1 {
   margin-bottom: 1.5rem;
 }
@@ -87,7 +98,7 @@ async function submit() {
 .auth-form label {
   display: block;
   margin-bottom: 0.25rem;
-  color: #94a3b8;
+  color: var(--wm-text-muted);
 }
 .auth-form input {
   width: 100%;
@@ -103,7 +114,7 @@ async function submit() {
   border-radius: 6px;
   text-align: center;
   text-decoration: none;
-  color: #fff;
+  color: var(--wm-white);
   border: none;
   cursor: pointer;
   font-size: 0.95rem;
@@ -114,9 +125,9 @@ async function submit() {
 .oauth-btn.facebook:hover { background: #166fe5; }
 .oauth-btn.x { background: #000; }
 .oauth-btn.x:hover { background: #333; }
-.divider { text-align: center; color: #64748b; margin: 1rem 0; }
+.divider { text-align: center; color: var(--wm-text-muted); margin: 1rem 0; }
 .error {
-  color: #f87171;
+  color: var(--wm-danger);
   margin: 0.5rem 0;
 }
 </style>

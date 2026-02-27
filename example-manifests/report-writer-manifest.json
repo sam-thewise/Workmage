@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "schema_version": "1.0.0",
   "description": "Takes summarized text and produces a structured report (bullets, sections). Receives output from Web Summarizer.",
-  "authors": ["Agent Foundry Demo"],
+  "authors": ["Workmage Demo"],
   "created_at": "2025-02-14T00:00:00Z",
   "input_formats": ["text/plain"],
   "output_formats": ["text/plain", "application/json"],

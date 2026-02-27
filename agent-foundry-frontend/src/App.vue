@@ -1,6 +1,10 @@
 <template>
   <div id="app">
     <nav class="nav">
+      <router-link to="/" class="brand">
+        <img src="/branding/workmage-icon.png" alt="Workmage logo" />
+        <span>Workmage</span>
+      </router-link>
       <router-link to="/">Home</router-link>
       <router-link to="/marketplace">Marketplace</router-link>
       <router-link to="/marketplace/chains">Chain Marketplace</router-link>
@@ -38,16 +42,28 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 1rem;
   padding: 1rem;
-  background: #1a1a2e;
-  color: white;
+  background: var(--wm-bg-soft);
+  color: var(--wm-white);
   align-items: center;
 }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 0.5rem;
+  font-weight: 700;
+}
+.brand img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
 .nav a, .nav button {
-  color: #eee;
+  color: var(--wm-white);
   text-decoration: none;
 }
 .nav a:hover, .nav a.router-link-active {
-  color: #7c3aed;
+  color: var(--wm-accent);
 }
 .main {
   padding: 2rem;

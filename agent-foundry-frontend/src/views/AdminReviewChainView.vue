@@ -72,13 +72,13 @@ onMounted(load)
 
 <style scoped>
 .review-chain { max-width: 900px; }
-.back { color: #94a3b8; text-decoration: none; display: inline-block; margin-bottom: 1rem; }
-.back:hover { color: #7c3aed; }
-.loading, .error { color: #94a3b8; }
-.meta { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; font-size: 0.875rem; color: #64748b; }
+.back { color: var(--wm-text-muted); text-decoration: none; display: inline-block; margin-bottom: 1rem; }
+.back:hover { color: var(--wm-accent); }
+.loading, .error { color: var(--wm-text-muted); }
+.meta { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; font-size: 0.875rem; color: var(--wm-text-muted); }
 .definition-section { margin: 1.5rem 0; }
 .definition-pre {
-  background: #0f172a;
+  background: var(--wm-bg);
   padding: 1rem;
   border-radius: 8px;
   overflow-x: auto;
@@ -86,9 +86,9 @@ onMounted(load)
   max-height: 420px;
   overflow-y: auto;
 }
-.hint { font-size: 0.875rem; color: #64748b; margin: 1rem 0; }
+.hint { font-size: 0.875rem; color: var(--wm-text-muted); margin: 1rem 0; }
 .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 .btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: #7c3aed; color: white; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
 .btn.danger { background: #dc2626; color: white; }
 </style>

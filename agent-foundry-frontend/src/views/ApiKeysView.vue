@@ -72,13 +72,13 @@ onMounted(loadProviders)
 <style scoped>
 .api-keys { max-width: 480px; }
 .key-form { display: flex; gap: 0.5rem; margin: 1rem 0; }
-.key-form select, .key-form input { padding: 0.5rem; border-radius: 6px; border: 1px solid #444; background: #1a1a2e; color: #fff; }
+.key-form select, .key-form input { padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
 .key-form input { flex: 1; }
 .btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: #7c3aed; color: white; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
 .btn.small { padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-left: 0.5rem; }
 .success { color: #10b981; }
-.error { color: #f87171; }
+.error { color: var(--wm-danger); }
 .saved { margin-top: 1.5rem; }
 .saved ul { list-style: none; padding: 0; }
 .saved li { display: flex; align-items: center; margin: 0.5rem 0; }

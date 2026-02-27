@@ -66,33 +66,33 @@ onMounted(loadAgents)
 }
 .filters { margin-bottom: 1.5rem; }
 .filters label { margin-right: 0.5rem; }
-.filters select { padding: 0.5rem; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+.filters select { padding: 0.5rem; border-radius: 6px; border: 1px solid var(--wm-border); background: var(--wm-bg-soft); color: var(--wm-text); }
 .agent-card {
-  background: #1e293b;
+  background: var(--wm-bg-soft);
   padding: 1.5rem;
   border-radius: 8px;
-  border: 1px solid #334155;
+  border: 1px solid var(--wm-border);
   text-decoration: none;
   color: inherit;
   display: block;
 }
-.agent-card:hover { border-color: #7c3aed; }
+.agent-card:hover { border-color: var(--wm-accent); }
 .agent-card h3 {
   margin-bottom: 0.5rem;
 }
 .agent-card p {
-  color: #94a3b8;
+  color: var(--wm-text-muted);
   font-size: 0.9rem;
   margin-bottom: 0.5rem;
 }
 .price {
-  color: #7c3aed;
+  color: var(--wm-accent);
   font-weight: 600;
 }
 .empty {
-  color: #64748b;
+  color: var(--wm-text-muted);
   margin-top: 2rem;
 }
 .switch-link { margin-bottom: 0.75rem; }
-.switch-link a { color: #7c3aed; text-decoration: none; }
+.switch-link a { color: var(--wm-accent); text-decoration: none; }
 </style>

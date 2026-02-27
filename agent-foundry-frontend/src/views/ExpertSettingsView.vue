@@ -51,11 +51,11 @@ onMounted(loadStatus)
 
 <style scoped>
 .expert-settings { max-width: 500px; margin-top: 1rem; }
-.stripe-section { padding: 1rem; background: #1e293b; border-radius: 8px; border: 1px solid #334155; }
+.stripe-section { padding: 1rem; background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border); }
 .stripe-section h3 { margin: 0 0 0.5rem; }
-.hint { color: #94a3b8; font-size: 0.9rem; margin: 0.5rem 0 1rem; }
+.hint { color: var(--wm-text-muted); font-size: 0.9rem; margin: 0.5rem 0 1rem; }
 .linked { color: #34d399; }
 .btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; }
-.btn.primary { background: #7c3aed; color: white; }
+.btn.primary { background: var(--wm-primary); color: var(--wm-white); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

@@ -1,4 +1,4 @@
-# Agent Foundry AI
+# Workmage
 
 AI agent marketplace and runner. Experts list OASF agents; Buyers discover, purchase, and run them with BYOK or platform LLM.
 

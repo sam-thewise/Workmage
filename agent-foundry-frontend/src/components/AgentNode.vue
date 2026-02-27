@@ -19,15 +19,15 @@ defineProps({
 </script>
 
 <style scoped>
-.agent-node { padding: 0.5rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; min-width: 120px; position: relative; }
+.agent-node { padding: 0.5rem 1rem; background: var(--wm-bg-soft); border: 1px solid var(--wm-border); border-radius: 8px; min-width: 120px; position: relative; }
 .agent-node-content { display: flex; align-items: center; gap: 0.5rem; }
 /* Ensure handles are visible and clickable */
 :deep(.vue-flow__handle) {
   width: 10px;
   height: 10px;
-  background: #7c3aed;
-  border: 2px solid #a78bfa;
+  background: var(--wm-primary);
+  border: 2px solid var(--wm-accent);
   pointer-events: all !important;
 }
-.badge { font-size: 0.7rem; background: #7c3aed; padding: 0.15rem 0.4rem; border-radius: 4px; }
+.badge { font-size: 0.7rem; background: var(--wm-primary); color: var(--wm-white); padding: 0.15rem 0.4rem; border-radius: 4px; }
 </style>
