@@ -17,6 +17,8 @@ from app.models.action_runtime import (
 )
 from app.models.agent_wallet import AgentWallet, AgentWalletSignerKey, WalletFundingIntent, AgentTrustProfile
 from app.models.agent_nft_contract import AgentNftContract
+from app.models.mint_payment_intent import MintPaymentIntent
+from app.models.mint_payment_watcher_state import MintPaymentWatcherState
 
 __all__ = [
     "User",
@@ -40,4 +42,6 @@ __all__ = [
     "WalletFundingIntent",
     "AgentTrustProfile",
     "AgentNftContract",
+    "MintPaymentIntent",
+    "MintPaymentWatcherState",
 ]

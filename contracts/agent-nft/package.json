@@ -6,6 +6,8 @@
     "compile": "hardhat compile",
     "deploy:fuji": "hardhat run scripts/deploy.js --network fuji",
     "deploy:avalanche": "hardhat run scripts/deploy.js --network avalanche",
+    "deploy:mint-payment:fuji": "hardhat run scripts/deploy-mint-payment.js --network fuji",
+    "deploy:mint-payment:avalanche": "hardhat run scripts/deploy-mint-payment.js --network avalanche",
     "verify:fuji": "hardhat verify --network fuji",
     "verify:avalanche": "hardhat verify --network avalanche"
   },

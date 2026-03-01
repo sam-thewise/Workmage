@@ -3,6 +3,14 @@ from app.worker.celery_app import celery_app
 from app.worker.sandbox import run_agent_in_sandbox
 
 
+@celery_app.task(bind=True)
+def process_mint_payments_for_network(self, network: str = "avalanche") -> dict:
+    """Watch for MintPaymentReceived events and trigger mints to matching intents."""
+    from app.services.mint_payment_watcher import process_mint_payments_for_network as _process
+
+    return _process(network)
+
+
 def _topological_order(nodes: list[dict], edges: list[dict]) -> list[str]:
     """Return node IDs in topological order. Entry nodes first."""
     node_ids = {n["id"] for n in nodes if n.get("id")}

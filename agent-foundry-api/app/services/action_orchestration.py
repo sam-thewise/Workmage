@@ -86,11 +86,13 @@ async def create_execution(
     network: str = "avalanche",
     decision_id: int | None = None,
     agent_id: int | None = None,
+    runner_user_id: int | None = None,
     tx_hash: str | None = None,
 ) -> ActionExecution:
     record = ActionExecution(
         decision_id=decision_id,
         agent_id=agent_id,
+        runner_user_id=runner_user_id,
         network=network,
         mode=mode,
         status=status,

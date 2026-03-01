@@ -61,6 +61,7 @@ class ActionExecution(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     decision_id: Mapped[int | None] = mapped_column(ForeignKey("action_decisions.id"), nullable=True, index=True)
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    runner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     network: Mapped[str] = mapped_column(String(32), nullable=False, default="avalanche")
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="simulation")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued", index=True)

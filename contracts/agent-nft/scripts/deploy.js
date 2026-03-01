@@ -41,10 +41,19 @@ async function main() {
   console.log(CONTRACT_NAME, "deployed to:", address);
   if (txHash) console.log("Deploy tx hash:", txHash);
 
+  const minterAddr = process.env.AGENT_NFT_MINTER_ADDRESS;
+  if (minterAddr) {
+    const MINTER_ROLE = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("MINTER_ROLE"));
+    const tx = await contract.grantRole(MINTER_ROLE, minterAddr);
+    await tx.wait();
+    console.log("Granted MINTER_ROLE to", minterAddr);
+  }
+
   console.log("\nNext steps:");
-  console.log("1. Register in API: POST /api/v1/admin/agent-nft-contracts");
+  console.log("1. If not set: AGENT_NFT_MINTER_ADDRESS - redeploy with it or call grantRole(MINTER_ROLE, api_minter_address)");
+  console.log("2. Register in API: POST /api/v1/admin/agent-nft-contracts");
   console.log("   Body: { \"network\": \"" + network + "\", \"chain_id\": " + chainId + ", \"contract_address\": \"" + address + "\", \"deploy_tx_hash\": \"<tx_hash>\" }");
-  console.log("2. Verify on Snowtrace:");
+  console.log("3. Verify on Snowtrace:");
   console.log("   npx hardhat verify --network " + network + " " + address + " \"" + NAME + "\" \"" + SYMBOL + "\" \"" + BASE_URI + "\"");
   console.log("\nContract address:", address);
 }

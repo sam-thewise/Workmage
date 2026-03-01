@@ -81,5 +81,13 @@ class Settings(BaseSettings):
     SIGNER_ENCRYPTION_KEY: str = ""
     ACTIONS_REQUIRE_APPROVAL_FOR_LIVE: bool = True
 
+    # Mint payment: user-paid Workmage Agent NFT mints
+    MINT_PAYMENT_CONTRACT_AVALANCHE: str = ""
+    MINT_PAYMENT_CONTRACT_FUJI: str = ""
+    AGENT_NFT_MINTER_PRIVATE_KEY: str = ""  # Holds MINTER_ROLE on WorkmageAgentNFT
+    MINT_FEE_MARGIN_FACTOR: float = 1.2  # required = gas * gas_price * margin
+    MINT_ESTIMATED_GAS: int = 150_000  # Fixed estimate for mint(address) tx
+    MINT_INTENT_EXPIRY_HOURS: int = 24
+
 
 settings = Settings()

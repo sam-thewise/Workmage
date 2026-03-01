@@ -13,6 +13,8 @@ from app.db.session import get_db
 from app.models.action_runtime import ActionApproval, ActionExecution
 from app.models.agent import Agent
 from app.models.agent_wallet import AgentTrustProfile, AgentWallet, AgentWalletSignerKey, WalletFundingIntent
+from app.models.mint_payment_intent import MintPaymentIntent
+from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.action_orchestration import (
     create_analysis,
@@ -25,6 +27,7 @@ from app.services.action_orchestration import (
 from app.services.contract_audit import run_static_audit_checks
 from app.services.contract_source import fetch_verified_source
 from app.services.liquidity_watcher import default_factory_addresses, fetch_pair_created_logs
+from app.services.mint_payment_watcher import estimate_required_mint_fee
 from app.services.policy_engine import evaluate_action_policy
 from app.services.trust_signals import normalize_trust_metadata
 from app.services.tx_executor import broadcast_execution, execute_transaction
@@ -119,22 +122,73 @@ async def list_executions(
     ]
 
 
+def _chain_id_to_network(chain_id: int) -> str:
+    return "fuji" if chain_id == 43113 else "avalanche"
+
+
+@router.get("/wallets")
+async def list_my_wallets(
+    agent_id: int | None = None,
+    network: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List action wallets owned by the current user (for dashboard)."""
+    q = select(AgentWallet, Agent.name.label("agent_name")).where(
+        AgentWallet.owner_user_id == user.id,
+    ).join(Agent, AgentWallet.agent_id == Agent.id)
+    if agent_id is not None:
+        q = q.where(AgentWallet.agent_id == agent_id)
+    if network is not None:
+        q = q.where(AgentWallet.network == network)
+    q = q.order_by(AgentWallet.created_at.desc())
+    result = await db.execute(q)
+    rows = result.all()
+    return [
+        {
+            "id": w.id,
+            "agent_id": w.agent_id,
+            "agent_name": name,
+            "network": w.network,
+            "chain_id": w.chain_id,
+            "wallet_address": w.wallet_address,
+            "status": w.status,
+            "created_at": w.created_at.isoformat() if w.created_at else None,
+        }
+        for w, name in rows
+    ]
+
+
 @router.post("/wallets")
 async def create_wallet(
     payload: WalletCreateRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from datetime import datetime, timedelta
+
     from eth_account import Account
 
+    from app.core.config import settings
     from app.core.key_encryption import encrypt_signer_key
 
     agent = (await db.execute(select(Agent).where(Agent.id == payload.agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(404, "Agent not found")
-    if agent.expert_id != user.id:
-        raise HTTPException(403, "Only the agent owner can create wallet")
+    is_owner = agent.expert_id == user.id
+    if not is_owner:
+        purchase = (
+            await db.execute(
+                select(Purchase).where(
+                    Purchase.buyer_id == user.id,
+                    Purchase.agent_id == payload.agent_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not purchase:
+            raise HTTPException(403, "Only the agent owner or a purchaser can create a wallet for this agent")
 
+    network = _chain_id_to_network(payload.chain_id)
     use_managed = payload.managed or not (payload.wallet_address and payload.wallet_address.strip())
     if use_managed:
         account = Account.create()
@@ -142,6 +196,7 @@ async def create_wallet(
         record = AgentWallet(
             agent_id=payload.agent_id,
             owner_user_id=user.id,
+            network=network,
             chain_id=payload.chain_id,
             wallet_address=wallet_address,
             nft_contract=payload.nft_contract,
@@ -156,10 +211,47 @@ async def create_wallet(
             key_version=1,
         )
         db.add(key_row)
+
+        payment_contract = (
+            settings.MINT_PAYMENT_CONTRACT_FUJI if network == "fuji" else settings.MINT_PAYMENT_CONTRACT_AVALANCHE
+        )
+        rpc_url = settings.AVALANCHE_FUJI_RPC_URL if network == "fuji" else settings.AVALANCHE_RPC_URL
+        if payment_contract and rpc_url:
+            try:
+                required_avax_wei = await estimate_required_mint_fee(rpc_url)
+            except Exception:
+                required_avax_wei = 200000000000000  # fallback ~0.0002 AVAX
+            expires_at = datetime.utcnow() + timedelta(hours=settings.MINT_INTENT_EXPIRY_HOURS)
+            recipient_normalized = wallet_address.lower()
+            intent = MintPaymentIntent(
+                wallet_id=record.id,
+                recipient_address=recipient_normalized,
+                required_avax_wei=str(required_avax_wei),
+                network=network,
+                status="pending_payment",
+                expires_at=expires_at,
+            )
+            db.add(intent)
+            await db.commit()
+            await db.refresh(record)
+            return {
+                "wallet_id": record.id,
+                "wallet_address": record.wallet_address,
+                "status": record.status,
+                "mint_payment": {
+                    "payment_contract_address": payment_contract,
+                    "required_avax_wei": str(required_avax_wei),
+                    "payment_instructions": (
+                        f"Call payForMint({record.wallet_address}) on contract {payment_contract} "
+                        f"with >= {required_avax_wei} wei (AVAX) to mint your Workmage Agent NFT."
+                    ),
+                },
+            }
     else:
         record = AgentWallet(
             agent_id=payload.agent_id,
             owner_user_id=user.id,
+            network=network,
             chain_id=payload.chain_id,
             wallet_address=payload.wallet_address.strip(),
             nft_contract=payload.nft_contract,
@@ -170,6 +262,45 @@ async def create_wallet(
     await db.commit()
     await db.refresh(record)
     return {"wallet_id": record.id, "wallet_address": record.wallet_address, "status": record.status}
+
+
+@router.get("/wallets/{wallet_id}/mint-status")
+async def get_mint_status(
+    wallet_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get mint payment intent status for a managed wallet (pending_payment | paid | minted | expired | failed)."""
+    wallet = (await db.execute(select(AgentWallet).where(AgentWallet.id == wallet_id))).scalar_one_or_none()
+    if not wallet:
+        raise HTTPException(404, "Wallet not found")
+    if wallet.owner_user_id != user.id:
+        raise HTTPException(403, "Wallet ownership mismatch")
+    intent = (
+        await db.execute(
+            select(MintPaymentIntent)
+            .where(MintPaymentIntent.wallet_id == wallet_id)
+            .order_by(MintPaymentIntent.created_at.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if not intent:
+        return {
+            "wallet_id": wallet_id,
+            "mint_status": "none",
+            "nft_contract": wallet.nft_contract,
+            "nft_token_id": wallet.nft_token_id,
+        }
+    return {
+        "wallet_id": wallet_id,
+        "mint_status": intent.status,
+        "payment_tx_hash": intent.payment_tx_hash,
+        "mint_tx_hash": intent.mint_tx_hash,
+        "required_avax_wei": intent.required_avax_wei,
+        "expires_at": intent.expires_at.isoformat() if intent.expires_at else None,
+        "nft_contract": wallet.nft_contract,
+        "nft_token_id": wallet.nft_token_id,
+    }
 
 
 @router.post("/wallets/{wallet_id}/fund")
@@ -302,6 +433,7 @@ async def run_execution(
             receipt={"error": policy_result.reason},
             decision_id=decision.id,
             agent_id=payload.agent_id,
+            runner_user_id=user.id,
             network=payload.network,
         )
         await create_policy_event(
@@ -337,6 +469,7 @@ async def run_execution(
         receipt=receipt,
         decision_id=decision.id,
         agent_id=payload.agent_id,
+        runner_user_id=user.id,
         network=payload.network,
         tx_hash=receipt.get("tx_hash"),
     )
@@ -444,19 +577,26 @@ async def broadcast_live_execution(
     ).scalar_one_or_none()
     if not approval:
         raise HTTPException(400, "No approved approval for this execution")
+    if execution.runner_user_id is not None and execution.runner_user_id != user.id:
+        raise HTTPException(403, "Only the runner who initiated this execution can broadcast it")
     if not execution.agent_id:
         raise HTTPException(400, "Execution has no agent_id; cannot resolve wallet")
+    runner_id = execution.runner_user_id or user.id
     wallet = (
         await db.execute(
             select(AgentWallet).where(
                 AgentWallet.agent_id == execution.agent_id,
+                AgentWallet.owner_user_id == runner_id,
                 AgentWallet.network == execution.network,
                 AgentWallet.status == "active",
             )
         )
     ).scalar_one_or_none()
     if not wallet:
-        raise HTTPException(404, "No active wallet for this agent on this network")
+        raise HTTPException(
+            404,
+            "No active wallet for this agent on this network for your account. Create one from My action wallets.",
+        )
     rpc_url = settings.AVALANCHE_FUJI_RPC_URL if execution.network == "fuji" else settings.AVALANCHE_RPC_URL
     if not rpc_url:
         raise HTTPException(503, "RPC URL not configured for this network")

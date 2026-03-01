@@ -38,6 +38,11 @@ class AgentWallet(Base):
         uselist=False,
         lazy="raise",
     )
+    mint_payment_intents: Mapped[list["MintPaymentIntent"]] = relationship(
+        "MintPaymentIntent",
+        back_populates="wallet",
+        lazy="raise",
+    )
 
 
 class AgentWalletSignerKey(Base):
