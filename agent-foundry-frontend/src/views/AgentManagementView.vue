@@ -1,7 +1,7 @@
 <template>
   <div class="agent-management mx-auto" style="max-width: 800px;">
     <h1 class="text-h4 mb-2">My Agents</h1>
-    <p v-if="authStore.user?.role !== 'expert'" class="mb-4">Experts can create and manage agents here.</p>
+    <p v-if="authStore.user?.role !== 'expert' && authStore.user?.role !== 'admin'" class="mb-4">Experts and admins can create and manage agents here.</p>
     <template v-else>
       <div class="d-flex gap-2 mb-4">
         <v-btn color="primary" to="/dashboard/agents/create">Create Agent</v-btn>
@@ -91,6 +91,6 @@ async function unpublish(id) {
 }
 
 onMounted(() => {
-  if (authStore.user?.role === 'expert') loadAgents()
+  if (authStore.user?.role === 'expert' || authStore.user?.role === 'admin') loadAgents()
 })
 </script>

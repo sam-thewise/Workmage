@@ -11,11 +11,15 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
-    from app.models.moderator_invite import ModeratorInvite
     from app.models.chain import AgentChain
+    from app.models.content_draft import ContentDraft
+    from app.models.user_personality import UserPersonalityProfile
+    from app.models.saved_output import SavedOutput
+    from app.models.moderator_invite import ModeratorInvite
     from app.models.purchase import Purchase
     from app.models.subscription import Subscription
     from app.models.user_llm_key import UserLLMKey
+    from app.models.user_github_token import UserGitHubToken
 
 
 class UserRole(str, enum.Enum):
@@ -85,6 +89,10 @@ class User(Base):
     llm_keys: Mapped[list["UserLLMKey"]] = relationship(
         "UserLLMKey", back_populates="user"
     )
+    # GitHub token for MCP GitHub tools (one per user, encrypted at rest)
+    github_token: Mapped["UserGitHubToken | None"] = relationship(
+        "UserGitHubToken", back_populates="user", uselist=False
+    )
     # Chains (as buyer)
     chains: Mapped[list["AgentChain"]] = relationship(
         "AgentChain", back_populates="buyer", foreign_keys="AgentChain.buyer_id"
@@ -104,6 +112,21 @@ class User(Base):
     # Chains moderated by this user (admin/mod)
     chains_moderated: Mapped[list["AgentChain"]] = relationship(
         "AgentChain", back_populates="moderated_by", foreign_keys="AgentChain.moderated_by_id"
+    )
+    # Content drafts (X/social approval flow)
+    content_drafts: Mapped[list["ContentDraft"]] = relationship(
+        "ContentDraft", back_populates="user", foreign_keys="ContentDraft.user_id"
+    )
+    # Personality profile for content voice (one per user)
+    personality_profile: Mapped["UserPersonalityProfile | None"] = relationship(
+        "UserPersonalityProfile",
+        back_populates="user",
+        uselist=False,
+        foreign_keys="UserPersonalityProfile.user_id",
+    )
+    # Saved outputs (slug -> content) for chain reuse
+    saved_outputs: Mapped[list["SavedOutput"]] = relationship(
+        "SavedOutput", back_populates="user", foreign_keys="SavedOutput.user_id"
     )
 
 

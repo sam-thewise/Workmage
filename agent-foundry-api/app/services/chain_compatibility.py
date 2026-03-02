@@ -51,8 +51,12 @@ def validate_chain_definition(
             errors.append("Node missing id")
             continue
         node_by_id[nid] = n
+        node_type = n.get("type")
         agent_id = n.get("agent_id")
-        if agent_id is None:
+        if node_type == "slug":
+            if not n.get("slug"):
+                errors.append(f"Slug node {nid} missing slug")
+        elif agent_id is None:
             errors.append(f"Node {nid} missing agent_id")
         elif agent_id not in agent_lookup:
             errors.append(f"Agent {agent_id} not found or not purchased")

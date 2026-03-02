@@ -89,5 +89,12 @@ class Settings(BaseSettings):
     MINT_ESTIMATED_GAS: int = 150_000  # Fixed estimate for mint(address) tx
     MINT_INTENT_EXPIRY_HOURS: int = 24
 
+    # X Authority workflow: optional scheduled chain run + draft creation
+    # Set X_AUTHORITY_CHAIN_ID and X_AUTHORITY_USER_ID to enable; chain output is parsed and ContentDraft rows created for the user.
+    X_AUTHORITY_CHAIN_ID: int = 0  # 0 = disabled
+    X_AUTHORITY_USER_ID: int = 0  # User ID to attribute drafts to
+    X_AUTHORITY_INPUT: str = ""  # Default input for the chain (e.g. expert handles or "today's trends")
+    X_AUTHORITY_MODEL: str = "openai/gpt-5.2"
+
 
 settings = Settings()

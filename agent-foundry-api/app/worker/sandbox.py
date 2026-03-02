@@ -25,6 +25,7 @@ def run_agent_in_sandbox(
     api_key: str | None,
     timeout_sec: int = DEFAULT_TIMEOUT,
     input_parts: list[dict] | None = None,
+    github_token: str | None = None,
 ) -> tuple[str, dict | None]:
     """Run agent in Docker sandbox. Uses shared volume (accessible by host/daemon). Returns (content, usage_dict)."""
     job_id = str(uuid.uuid4())
@@ -42,6 +43,8 @@ def run_agent_in_sandbox(
         }
         if input_parts:
             request["input_parts"] = input_parts
+        if github_token:
+            request["github_token"] = github_token
         with open(input_dir / "request.json", "w") as f:
             json.dump(request, f, indent=2)
         env = {

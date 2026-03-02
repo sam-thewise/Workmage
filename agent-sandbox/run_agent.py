@@ -22,7 +22,7 @@ def main():
     manifest = req.get("manifest", {})
     user_input = req.get("user_input", "")
     input_parts = req.get("input_parts", [])
-    model = req.get("model", "openai/gpt-4")
+    model = req.get("model", "openai/gpt-5.2")
     api_key = req.get("api_key")
 
     system_prompt = _build_system_prompt(manifest)
@@ -86,8 +86,11 @@ def main():
                 except Exception:
                     parsed_args = {}
 
-                if parse_mcp_tool_name(fn_name):
-                    tool_result = execute_mcp_tool(manifest, fn_name, parsed_args)
+                parsed = parse_mcp_tool_name(fn_name)
+                if parsed:
+                    server_key, _ = parsed
+                    gh_token = req.get("github_token") if server_key == "github" else None
+                    tool_result = execute_mcp_tool(manifest, fn_name, parsed_args, github_token=gh_token)
                 else:
                     tool_result = f"Tool `{fn_name}` not registered in this runtime"
 

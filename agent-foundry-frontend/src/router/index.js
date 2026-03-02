@@ -49,6 +49,8 @@ const routes = [
       { path: 'agents/create', component: () => import('@/views/CreateAgentView.vue'), name: 'create-agent' },
       { path: 'agents/:id/edit', component: () => import('@/views/CreateAgentView.vue'), name: 'edit-agent' },
       { path: 'wallets', component: () => import('@/views/ActionWalletsView.vue'), name: 'dashboard-wallets' },
+      { path: 'drafts', component: () => import('@/views/ContentDraftsView.vue'), name: 'dashboard-drafts' },
+      { path: 'personality', component: () => import('@/views/PersonalityView.vue'), name: 'dashboard-personality' },
       { path: 'settings', component: () => import('@/views/ExpertSettingsView.vue'), name: 'dashboard-settings' }
     ]
   }

@@ -59,8 +59,8 @@ async def list_my_agents(
     db: AsyncSession = Depends(get_db),
 ):
     """List current user's agents (experts only)."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(select(Agent).where(Agent.expert_id == user.id).order_by(Agent.created_at.desc()))
     agents = result.scalars().all()
     return agents
@@ -78,7 +78,7 @@ async def get_agent(
     if not agent:
         raise HTTPException(404, "Agent not found")
     if agent.status in (AgentStatus.DRAFT.value, AgentStatus.PENDING_REVIEW.value, AgentStatus.REJECTED.value):
-        if not user or user.id != agent.expert_id:
+        if not user or (user.id != agent.expert_id and user.role.value != "admin"):
             raise HTTPException(404, "Agent not found")
     return agent
 
@@ -110,7 +110,7 @@ async def get_agent_uri(
     if not agent:
         raise HTTPException(404, "Agent not found")
     if agent.status in (AgentStatus.DRAFT.value, AgentStatus.PENDING_REVIEW.value, AgentStatus.REJECTED.value):
-        if not user or user.id != agent.expert_id:
+        if not user or (user.id != agent.expert_id and user.role.value != "admin"):
             raise HTTPException(404, "Agent not found")
 
     manifest = agent.manifest or {}
@@ -141,8 +141,8 @@ async def create_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """Create agent (experts only)."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     try:
         manifest, metadata = validate_and_parse(payload.manifest_raw)
     except ManifestValidationError as e:
@@ -172,8 +172,8 @@ async def update_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """Update agent (expert owner only)."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.expert_id == user.id))
     agent = result.scalar_one_or_none()
     if not agent:
@@ -213,8 +213,8 @@ async def publish_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """Publish agent (status: listed). Paid agents require linked Stripe account."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(Agent)
@@ -245,8 +245,8 @@ async def unpublish_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """Unpublish agent (status: draft)."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.expert_id == user.id))
     agent = result.scalar_one_or_none()
     if not agent:

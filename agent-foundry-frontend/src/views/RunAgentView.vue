@@ -7,13 +7,23 @@
       <p class="text-body-2 text-medium-emphasis mb-4">
         <router-link to="/chains" class="text-accent text-decoration-none">Or build a chain</router-link> of agents.
       </p>
+      <template v-if="myAgents.length">
+        <h3 class="text-subtitle-1 mb-2">Your agents</h3>
+        <ul class="pa-0 ma-0 mb-4" style="list-style: none;">
+          <li v-for="a in myAgents" :key="a.id" class="py-2">
+            <router-link :to="`/run/${a.id}`" class="text-accent text-decoration-none">{{ a.name }}</router-link>
+            <span v-if="a.status !== 'listed'" class="text-caption text-medium-emphasis ml-2">({{ a.status }})</span>
+          </li>
+        </ul>
+      </template>
+      <h3 class="text-subtitle-1 mb-2">Purchased agents</h3>
       <div v-if="purchasesLoading" class="mb-4">Loading...</div>
       <ul v-else class="purchase-list pa-0 ma-0 mb-4" style="list-style: none;">
         <li v-for="p in purchases" :key="p.agent_id" class="py-2">
           <router-link :to="`/run/${p.agent_id}`" class="text-accent text-decoration-none">{{ p.agent_name || `Agent #${p.agent_id}` }}</router-link>
         </li>
       </ul>
-      <p v-if="!purchasesLoading && purchases.length === 0" class="text-medium-emphasis">No agents purchased. <router-link to="/marketplace" class="text-accent text-decoration-none">Browse marketplace</router-link>.</p>
+      <p v-if="!purchasesLoading && purchases.length === 0 && !myAgents.length" class="text-medium-emphasis">No agents to run. <router-link to="/marketplace" class="text-accent text-decoration-none">Browse marketplace</router-link> or <router-link to="/dashboard/agents" class="text-accent text-decoration-none">create an agent</router-link>.</p>
     </div>
     <div v-else-if="!agent" class="text-error my-4">Agent not found.</div>
     <v-form v-else @submit.prevent="run" class="d-flex flex-column gap-4 mt-4">
@@ -24,7 +34,7 @@
       <v-textarea v-model="userInput" label="Input" rows="5" placeholder="Enter your prompt or question..." required density="comfortable" />
       <v-select v-model="model" :items="modelOptions" item-title="title" item-value="value" label="Model" density="comfortable" />
       <div>
-        <v-checkbox v-model="useByok" label="Use my API key (BYOK)" density="compact" hide-details />
+        <v-switch v-model="useByok" label="Use my API key (BYOK)" color="primary" hide-details class="byok-switch-high-contrast" />
         <p v-if="useByok" class="text-caption text-medium-emphasis mt-1">
           Make sure you've saved your API key for {{ model.split('/')[0] }}.
           <router-link to="/settings/keys" class="text-accent text-decoration-none">Manage keys</router-link>
@@ -53,7 +63,9 @@ import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 
 const modelOptions = [
-  { title: 'OpenAI GPT-4', value: 'openai/gpt-4' },
+  { title: 'OpenAI GPT-5.2', value: 'openai/gpt-5.2' },
+  { title: 'OpenAI GPT-5 mini', value: 'openai/gpt-5-mini' },
+  { title: 'OpenAI GPT-4.1', value: 'openai/gpt-4.1' },
   { title: 'OpenAI GPT-3.5', value: 'openai/gpt-3.5-turbo' },
   { title: 'Anthropic Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet-20240229' },
   { title: 'Ollama Llama 2 (local)', value: 'ollama/llama2' },
@@ -64,12 +76,13 @@ const authStore = useAuthStore()
 const agentId = ref(route.params.id ? parseInt(route.params.id, 10) : null)
 const agent = ref(null)
 const userInput = ref('')
-const model = ref('openai/gpt-4')
+const model = ref('openai/gpt-5.2')
 const useByok = ref(false)
 const running = ref(false)
 const result = ref(null)
 const purchases = ref([])
 const purchasesLoading = ref(false)
+const myAgents = ref([])
 const estimate = ref(null)
 const subscription = ref(null)
 let pollInterval = null
@@ -83,6 +96,16 @@ async function loadPurchases() {
     purchases.value = []
   } finally {
     purchasesLoading.value = false
+  }
+}
+
+async function loadMyAgents() {
+  if (authStore.user?.role !== 'expert' && authStore.user?.role !== 'admin') return
+  try {
+    const { data } = await api.get('/agents/my')
+    myAgents.value = data || []
+  } catch {
+    myAgents.value = []
   }
 }
 
@@ -176,11 +199,16 @@ onMounted(() => {
     fetchSubscription()
   } else {
     loadPurchases()
+    loadMyAgents()
   }
 })
 watch(() => route.params.id, (id) => {
   agentId.value = id ? parseInt(id, 10) : null
   loadAgent()
   result.value = null
+  if (!agentId.value) {
+    loadPurchases()
+    loadMyAgents()
+  }
 })
 </script>

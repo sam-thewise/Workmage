@@ -58,7 +58,7 @@
         <h3 class="text-h6 mb-3">Registered shared agent NFT contracts</h3>
         <div v-if="agentNftLoading" class="text-medium-emphasis py-4">Loading...</div>
         <div v-else class="d-flex flex-column gap-2 mb-6">
-          <v-card v-for="c in agentNftContracts" :key="c.network" variant="tonal" class="pa-4">
+          <v-card v-for="c in agentNftContracts" :key="c.id" variant="tonal" class="pa-4">
             <div class="d-flex justify-space-between align-start flex-wrap gap-2">
               <div class="flex-grow-1">
                 <strong>{{ c.network }}</strong>
@@ -66,7 +66,9 @@
                 <span v-if="c.deploy_tx_hash" class="text-caption text-medium-emphasis d-block">Tx: {{ c.deploy_tx_hash }}</span>
                 <span v-if="c.verified_at" class="text-caption text-success d-block">Verified {{ formatDate(c.verified_at) }}</span>
               </div>
-              <div class="d-flex gap-2">
+              <div class="d-flex gap-2 flex-wrap">
+                <v-btn size="small" variant="outlined" @click="openEditModal(c)">Edit</v-btn>
+                <v-btn size="small" variant="outlined" color="error" :loading="deleteLoading === c.id" :disabled="deleteLoading === c.id" @click="deleteAgentNftContract(c)">Delete</v-btn>
                 <v-btn size="small" variant="outlined" @click="openVerifyModal(c)">Verify on Snowtrace</v-btn>
                 <v-btn size="small" variant="outlined" :loading="verifyStatusLoading === c.network" :disabled="verifyStatusLoading === c.network" @click="checkVerifyStatus(c.network)">
                   {{ verifyStatusLoading === c.network ? 'Checking...' : 'Check verification status' }}
@@ -86,6 +88,23 @@
         </div>
         <p v-if="nftSuccess" class="text-success text-body-2">{{ nftSuccess }}</p>
         <p v-if="nftError" class="text-error text-body-2">{{ nftError }}</p>
+
+        <v-dialog v-model="editModal" max-width="520" persistent>
+          <v-card v-if="editModal" class="pa-4">
+            <h4 class="text-h6 mb-3">Edit contract — {{ editModal.network }}</h4>
+            <div class="d-flex flex-column gap-2 mb-3">
+              <v-text-field v-model="editForm.network" label="Network" density="compact" hide-details />
+              <v-text-field v-model.number="editForm.chain_id" type="number" label="Chain ID" density="compact" hide-details />
+              <v-text-field v-model="editForm.contract_address" label="Contract address" density="compact" hide-details />
+              <v-text-field v-model="editForm.deploy_tx_hash" label="Deploy tx hash (optional)" density="compact" hide-details />
+            </div>
+            <div class="d-flex gap-2">
+              <v-btn variant="outlined" @click="editModal = null">Cancel</v-btn>
+              <v-btn color="primary" :loading="editLoading" @click="submitEdit">Save</v-btn>
+            </div>
+            <p v-if="editError" class="text-error text-body-2 mt-3 mb-0">{{ editError }}</p>
+          </v-card>
+        </v-dialog>
 
         <v-dialog v-model="verifyModal" max-width="600" persistent>
           <v-card v-if="verifyModal" class="pa-4">
@@ -154,6 +173,11 @@ const verifySubmitting = ref(false)
 const verifyResult = ref('')
 const verifyError = ref('')
 const verifyStatusLoading = ref(null)
+const editModal = ref(null)
+const editForm = ref({ network: '', chain_id: 0, contract_address: '', deploy_tx_hash: '' })
+const editLoading = ref(false)
+const editError = ref('')
+const deleteLoading = ref(null)
 
 const pendingCount = computed(() => pendingAgents.value.length)
 const pendingChainCount = computed(() => pendingChains.value.length)
@@ -290,6 +314,50 @@ async function registerAgentNftContract() {
     nftError.value = e.response?.data?.detail?.message || e.response?.data?.detail || 'Failed to register'
   } finally {
     nftLoading.value = false
+  }
+}
+
+function openEditModal(contract) {
+  editModal.value = contract
+  editForm.value = {
+    network: contract.network,
+    chain_id: contract.chain_id,
+    contract_address: contract.contract_address,
+    deploy_tx_hash: contract.deploy_tx_hash || ''
+  }
+  editError.value = ''
+}
+
+async function submitEdit() {
+  if (!editModal.value) return
+  editLoading.value = true
+  editError.value = ''
+  try {
+    await api.put(`/admin/agent-nft-contracts/${editModal.value.id}`, {
+      network: editForm.value.network,
+      chain_id: editForm.value.chain_id,
+      contract_address: editForm.value.contract_address?.trim(),
+      deploy_tx_hash: editForm.value.deploy_tx_hash || null
+    })
+    editModal.value = null
+    await loadAgentNftContracts()
+  } catch (e) {
+    editError.value = e.response?.data?.detail?.message || e.response?.data?.detail || 'Update failed'
+  } finally {
+    editLoading.value = false
+  }
+}
+
+async function deleteAgentNftContract(contract) {
+  if (!confirm(`Remove agent NFT contract for ${contract.network}? This cannot be undone.`)) return
+  deleteLoading.value = contract.id
+  try {
+    await api.delete(`/admin/agent-nft-contracts/${contract.id}`)
+    await loadAgentNftContracts()
+  } catch (e) {
+    alert(e.response?.data?.detail?.message || e.response?.data?.detail || 'Delete failed')
+  } finally {
+    deleteLoading.value = null
   }
 }
 

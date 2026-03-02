@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,9 +16,12 @@ from app.models.chain import AgentChain, ChainStatus
 from app.models.purchase import Purchase
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.models.user_github_token import UserGitHubToken
 from app.models.user_llm_key import UserLLMKey
+from app.models.user_personality import UserPersonalityProfile
 from app.schemas.chain import ChainCreate, ChainListResponse, ChainResponse, ChainRunRequest, ChainUpdate
 from app.services.chain_compatibility import can_chain, validate_chain_definition
+from app.services.manifest_validator import manifest_has_github_module
 from app.worker.celery_app import celery_app
 from app.worker.tasks import run_chain_task
 
@@ -37,7 +40,7 @@ def _sanitize_error(msg: str | None) -> str:
 
 
 async def _agent_lookup_for_chain_definition(db: AsyncSession, agent_ids: list[int]) -> dict[int, Agent]:
-    """Load agents that may be included in marketplace chains."""
+    """Load agents that may be included in marketplace chains (listed + approved only)."""
     if not agent_ids:
         return {}
     result = await db.execute(
@@ -45,6 +48,25 @@ async def _agent_lookup_for_chain_definition(db: AsyncSession, agent_ids: list[i
             Agent.id.in_(agent_ids),
             Agent.status == AgentStatus.LISTED.value,
             Agent.approval_status == "approved",
+        )
+    )
+    agents = result.scalars().all()
+    return {a.id: a for a in agents}
+
+
+async def _agent_lookup_for_chain_definition_with_own(
+    db: AsyncSession, agent_ids: list[int], user_id: int
+) -> dict[int, Agent]:
+    """Load agents for save/update: listed+approved OR owned by user (so own unpublished agents are allowed)."""
+    if not agent_ids:
+        return {}
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id.in_(agent_ids),
+            or_(
+                (Agent.status == AgentStatus.LISTED.value) & (Agent.approval_status == "approved"),
+                Agent.expert_id == user_id,
+            ),
         )
     )
     agents = result.scalars().all()
@@ -135,8 +157,8 @@ async def list_my_chains(
     db: AsyncSession = Depends(get_db),
 ):
     """List current expert's authored chains."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(
         select(AgentChain)
         .where(AgentChain.expert_id == user.id)
@@ -166,14 +188,14 @@ async def create_chain(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a chain listing draft (experts only)."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
 
     defn = payload.definition
     nodes = defn.get("nodes", [])
     edges = defn.get("edges", [])
     agent_ids = list({n.get("agent_id") for n in nodes if n.get("agent_id") is not None})
-    agent_lookup = await _agent_lookup_for_chain_definition(db, agent_ids)
+    agent_lookup = await _agent_lookup_for_chain_definition_with_own(db, agent_ids, user.id)
     errors = validate_chain_definition(nodes, edges, agent_lookup)
     if errors:
         raise HTTPException(400, detail={"message": "Invalid chain", "errors": errors})
@@ -203,16 +225,16 @@ async def check_compatibility(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Check if agent A's output can feed agent B's input."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
-    agent_lookup = await _agent_lookup_for_chain_definition(db, [agent_a, agent_b])
+    """Check if agent A's output can feed agent B's input (includes your own unpublished agents)."""
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
+    agent_lookup = await _agent_lookup_for_chain_definition_with_own(db, [agent_a, agent_b], user.id)
     a = agent_lookup.get(agent_a)
     b = agent_lookup.get(agent_b)
     if not a:
-        raise HTTPException(404, "Agent A not found or not listed")
+        raise HTTPException(404, "Agent A not found or not accessible")
     if not b:
-        raise HTTPException(404, "Agent B not found or not listed")
+        raise HTTPException(404, "Agent B not found or not accessible")
     return {"compatible": can_chain(a, b)}
 
 
@@ -289,8 +311,8 @@ async def update_chain(
     db: AsyncSession = Depends(get_db),
 ):
     """Update authored chain draft/rejected chain."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(
         select(AgentChain).where(AgentChain.id == chain_id, AgentChain.expert_id == user.id)
     )
@@ -303,7 +325,7 @@ async def update_chain(
         nodes = defn.get("nodes", [])
         edges = defn.get("edges", [])
         agent_ids = list({n.get("agent_id") for n in nodes if n.get("agent_id") is not None})
-        agent_lookup = await _agent_lookup_for_chain_definition(db, agent_ids)
+        agent_lookup = await _agent_lookup_for_chain_definition_with_own(db, agent_ids, user.id)
         errors = validate_chain_definition(nodes, edges, agent_lookup)
         if errors:
             raise HTTPException(400, detail={"message": "Invalid chain", "errors": errors})
@@ -334,15 +356,33 @@ async def publish_chain(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit chain for moderation review."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    """Submit chain for moderation review. All agents in the chain must be published (listed) first."""
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(
         select(AgentChain).where(AgentChain.id == chain_id, AgentChain.expert_id == user.id)
     )
     chain = result.scalar_one_or_none()
     if not chain:
         raise HTTPException(404, "Chain not found")
+    agent_ids = list(
+        {n.get("agent_id") for n in (chain.definition or {}).get("nodes", []) if n.get("agent_id") is not None}
+    )
+    if agent_ids:
+        agents_result = await db.execute(
+            select(Agent).where(Agent.id.in_(agent_ids))
+        )
+        agents = agents_result.scalars().all()
+        unpublished = [
+            a.name or f"Agent #{a.id}"
+            for a in agents
+            if a.status != AgentStatus.LISTED.value or a.approval_status != "approved"
+        ]
+        if unpublished:
+            raise HTTPException(
+                400,
+                f"All agents in the chain must be published before you can publish the chain. Unpublished: {', '.join(unpublished)}",
+            )
     if chain.price_cents > 0:
         profile_result = await db.execute(
             select(User).options(selectinload(User.expert_profile)).where(User.id == user.id)
@@ -367,8 +407,8 @@ async def unpublish_chain(
     db: AsyncSession = Depends(get_db),
 ):
     """Move chain back to draft."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(
         select(AgentChain).where(AgentChain.id == chain_id, AgentChain.expert_id == user.id)
     )
@@ -420,6 +460,32 @@ async def run_chain(
         else:
             raise HTTPException(400, f"No BYOK key for {provider}")
 
+    personality_text = None
+    profile_result = await db.execute(
+        select(UserPersonalityProfile).where(UserPersonalityProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if profile and (profile.profile_text or "").strip():
+        personality_text = profile.profile_text.strip()
+
+    github_token = None
+    defn = chain.definition or {}
+    agent_ids = {n.get("agent_id") for n in defn.get("nodes", []) if n.get("agent_id") is not None}
+    if agent_ids:
+        agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+        agents_list = agents_result.scalars().all()
+        if any(manifest_has_github_module(a.manifest or {}) for a in agents_list):
+            gh_result = await db.execute(
+                select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+            )
+            gh_row = gh_result.scalar_one_or_none()
+            if not gh_row:
+                raise HTTPException(
+                    400,
+                    "This chain uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
+                )
+            github_token = decrypt_api_key(gh_row.encrypted_token)
+
     job_id = str(uuid4())
     task = run_chain_task.delay(
         chain_id=chain_id,
@@ -427,6 +493,10 @@ async def run_chain(
         model=payload.model,
         api_key=api_key,
         buyer_id=user.id if not payload.use_byok else None,
+        personality_text=personality_text,
+        run_type=payload.run_type,
+        run_owner_id=user.id,
+        github_token=github_token,
     )
     CHAIN_JOB_STORE[job_id] = (task.id, user.id)
     return {"job_id": job_id, "status": "queued"}

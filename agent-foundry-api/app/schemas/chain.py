@@ -5,11 +5,17 @@ from pydantic import BaseModel, Field
 
 
 class ChainNode(BaseModel):
-    """Node in chain definition."""
+    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug."""
     id: str
-    agent_id: int
+    agent_id: int | None = None  # None for slug nodes
     position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
     role: str | None = None
+    type: str | None = None  # "slug" for slug nodes
+    slug: str | None = None
+    content: str | None = None  # optional fixed content for slug nodes ("set slug content")
+    lane: str | None = None  # "setup" | "main"
+    save_to_slug: str | None = None  # for setup-lane agent nodes
+    input_from_slug: str | None = None  # prefill agent input from saved output (optional)
 
 
 class ChainEdge(BaseModel):
@@ -83,5 +89,6 @@ class ChainResponse(BaseModel):
 class ChainRunRequest(BaseModel):
     """Run chain request."""
     user_input: str
-    model: str = "openai/gpt-4"
+    model: str = "openai/gpt-5.2"
     use_byok: bool = False
+    run_type: str | None = None  # "setup" for first-run lane only; default = main lane

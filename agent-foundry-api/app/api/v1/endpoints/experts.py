@@ -43,8 +43,8 @@ async def stripe_connect_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Check if expert has linked Stripe. Returns linked=true/false."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     result = await db.execute(
         select(ExpertProfile).where(ExpertProfile.user_id == user.id)
     )
@@ -59,8 +59,8 @@ async def stripe_connect_onboard(
     db: AsyncSession = Depends(get_db),
 ):
     """Get Stripe Connect onboarding URL. Experts must complete this to sell paid agents."""
-    if user.role.value != "expert":
-        raise HTTPException(403, "Experts only")
+    if user.role.value not in ("expert", "admin"):
+        raise HTTPException(403, "Expert or admin access required")
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(503, "Stripe not configured")
     profile = await _get_or_create_expert_profile(db, user)

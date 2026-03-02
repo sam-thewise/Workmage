@@ -14,7 +14,9 @@ from app.models.agent import Agent
 from app.models.purchase import Purchase
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.models.user_github_token import UserGitHubToken
 from app.models.user_llm_key import UserLLMKey
+from app.services.manifest_validator import manifest_has_github_module
 from app.worker.celery_app import celery_app
 from app.worker.tasks import run_agent_task
 
@@ -36,7 +38,7 @@ def _sanitize_error(msg: str | None) -> str:
 class RunRequest(BaseModel):
     agent_id: int
     user_input: str
-    model: str = "openai/gpt-4"
+    model: str = "openai/gpt-5.2"
     use_byok: bool = False
 
 
@@ -46,20 +48,24 @@ async def create_run(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Enqueue agent run. Returns job_id for polling."""
-    result = await db.execute(select(Agent).where(Agent.id == payload.agent_id, Agent.status == "listed"))
+    """Enqueue agent run. Returns job_id for polling. Owner (expert) or admin can run own agents even if not listed."""
+    result = await db.execute(select(Agent).where(Agent.id == payload.agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
-        raise HTTPException(404, "Agent not found or not listed")
-    purchase_result = await db.execute(
-        select(Purchase).where(
-            Purchase.buyer_id == user.id,
-            Purchase.agent_id == payload.agent_id,
+        raise HTTPException(404, "Agent not found")
+    is_owner_or_admin = agent.expert_id == user.id or user.role.value == "admin"
+    if not is_owner_or_admin:
+        if agent.status != "listed":
+            raise HTTPException(403, "Agent is not listed")
+        purchase_result = await db.execute(
+            select(Purchase).where(
+                Purchase.buyer_id == user.id,
+                Purchase.agent_id == payload.agent_id,
+            )
         )
-    )
-    purchase = purchase_result.scalar_one_or_none()
-    if not purchase:
-        raise HTTPException(403, "Purchase this agent first")
+        purchase = purchase_result.scalar_one_or_none()
+        if not purchase:
+            raise HTTPException(403, "Purchase this agent first")
     if not payload.use_byok:
         sub_result = await db.execute(
             select(Subscription).where(Subscription.buyer_id == user.id)
@@ -85,6 +91,19 @@ async def create_run(
         else:
             raise HTTPException(400, f"No BYOK key for {provider}")
 
+    github_token = None
+    if manifest_has_github_module(agent.manifest):
+        gh_result = await db.execute(
+            select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+        )
+        gh_row = gh_result.scalar_one_or_none()
+        if not gh_row:
+            raise HTTPException(
+                400,
+                "This agent uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
+            )
+        github_token = decrypt_api_key(gh_row.encrypted_token)
+
     job_id = str(uuid4())
     task = run_agent_task.delay(
         agent_id=payload.agent_id,
@@ -92,6 +111,7 @@ async def create_run(
         model=payload.model,
         api_key=api_key,
         buyer_id=user.id if not payload.use_byok else None,
+        github_token=github_token,
     )
     JOB_STORE[job_id] = (task.id, user.id)
     return {"job_id": job_id, "status": "queued"}

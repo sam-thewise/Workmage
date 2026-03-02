@@ -27,7 +27,7 @@ def completion(
     api_key: str | None = None,
     stream: bool = False,
 ) -> Any:
-    """Run completion via LiteLLM. Model format: openai/gpt-4, anthropic/claude-3, etc."""
+    """Run completion via LiteLLM. Model format: openai/gpt-5.2, openai/gpt-5-mini, anthropic/claude-3, etc."""
     import litellm
 
     provider = model.split("/")[0] if "/" in model else "openai"

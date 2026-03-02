@@ -74,13 +74,20 @@ def extract_mcp_servers(manifest: dict[str, Any]) -> dict[str, MCPServerConfig]:
     return servers
 
 
-def _jsonrpc_call(server: MCPServerConfig, method: str, params: dict[str, Any]) -> dict[str, Any]:
+def _jsonrpc_call(
+    server: MCPServerConfig,
+    method: str,
+    params: dict[str, Any],
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Call JSON-RPC endpoint with bounded retries and timeout."""
     payload = {"jsonrpc": "2.0", "id": int(time.time() * 1000), "method": method, "params": params}
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if server.headers:
         headers.update({str(k): str(v) for k, v in server.headers.items()})
+    if extra_headers:
+        headers.update({str(k): str(v) for k, v in extra_headers.items()})
 
     attempt = 0
     while True:
@@ -143,7 +150,12 @@ def parse_mcp_tool_name(tool_name: str) -> tuple[str, str] | None:
     return parts[1], parts[2]
 
 
-def execute_mcp_tool(manifest: dict[str, Any], tool_name: str, arguments: dict[str, Any]) -> str:
+def execute_mcp_tool(
+    manifest: dict[str, Any],
+    tool_name: str,
+    arguments: dict[str, Any],
+    github_token: str | None = None,
+) -> str:
     """Execute a namespaced MCP tool and return normalized text output."""
     parsed = parse_mcp_tool_name(tool_name)
     if not parsed:
@@ -156,11 +168,16 @@ def execute_mcp_tool(manifest: dict[str, Any], tool_name: str, arguments: dict[s
     if server.transport != "http":
         return f"MCP transport `{server.transport}` not supported yet"
 
+    extra_headers = None
+    if server_key == "github" and github_token:
+        extra_headers = {"Authorization": f"token {github_token}"}
+
     try:
         result = _jsonrpc_call(
             server,
             "tools/call",
             {"name": inner_tool_name, "arguments": arguments or {}},
+            extra_headers=extra_headers,
         )
     except Exception as exc:
         return f"MCP execution failed: {exc}"

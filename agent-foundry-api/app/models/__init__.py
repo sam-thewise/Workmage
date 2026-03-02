@@ -19,6 +19,10 @@ from app.models.agent_wallet import AgentWallet, AgentWalletSignerKey, WalletFun
 from app.models.agent_nft_contract import AgentNftContract
 from app.models.mint_payment_intent import MintPaymentIntent
 from app.models.mint_payment_watcher_state import MintPaymentWatcherState
+from app.models.content_draft import ContentDraft
+from app.models.user_personality import UserPersonalityProfile
+from app.models.saved_output import SavedOutput
+from app.models.user_github_token import UserGitHubToken
 
 __all__ = [
     "User",
@@ -44,4 +48,8 @@ __all__ = [
     "AgentNftContract",
     "MintPaymentIntent",
     "MintPaymentWatcherState",
+    "ContentDraft",
+    "UserPersonalityProfile",
+    "SavedOutput",
+    "UserGitHubToken",
 ]

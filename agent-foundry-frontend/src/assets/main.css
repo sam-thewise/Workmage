@@ -33,3 +33,18 @@ h6,
   font-family: var(--wm-font-heading);
   font-weight: 700;
 }
+
+/* Switches: visible track and thumb on dark theme so on/off state is clear */
+.v-application .v-switch .v-switch__track {
+  background: rgba(255, 255, 255, 0.2) !important;
+  opacity: 1 !important;
+}
+.v-application .v-switch .v-selection-control--dirty .v-switch__track {
+  background: rgb(var(--v-theme-primary)) !important;
+  opacity: 1 !important;
+}
+.v-application .v-switch .v-switch__thumb {
+  background: #fff !important;
+  color: rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4) !important;
+}

@@ -351,6 +351,15 @@ class RegisterAgentNftContractRequest(BaseModel):
     contract_metadata: dict = {}
 
 
+class UpdateAgentNftContractRequest(BaseModel):
+    """Partial update for a registered agent NFT contract."""
+    network: str | None = None
+    chain_id: int | None = None
+    contract_address: str | None = None
+    deploy_tx_hash: str | None = None
+    contract_metadata: dict | None = None
+
+
 class VerifyAgentNftContractRequest(BaseModel):
     source_code: str
     contract_name: str = "WorkmageAgentNFT"
@@ -380,6 +389,76 @@ async def list_agent_nft_contracts(
         }
         for r in rows
     ]
+
+
+def _agent_nft_contract_to_dict(r: AgentNftContract) -> dict:
+    return {
+        "id": r.id,
+        "network": r.network,
+        "chain_id": r.chain_id,
+        "contract_address": r.contract_address,
+        "deploy_tx_hash": r.deploy_tx_hash,
+        "verified_at": r.verified_at.isoformat() if r.verified_at else None,
+        "verification_guid": r.verification_guid,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+@router.get("/agent-nft-contracts/{contract_id}")
+async def get_agent_nft_contract(
+    contract_id: int,
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single registered agent NFT contract by id. Admin only."""
+    result = await db.execute(select(AgentNftContract).where(AgentNftContract.id == contract_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Agent NFT contract not found")
+    return _agent_nft_contract_to_dict(record)
+
+
+@router.put("/agent-nft-contracts/{contract_id}")
+async def update_agent_nft_contract(
+    contract_id: int,
+    payload: UpdateAgentNftContractRequest,
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a registered agent NFT contract. Admin only. Only provided fields are updated."""
+    result = await db.execute(select(AgentNftContract).where(AgentNftContract.id == contract_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Agent NFT contract not found")
+    if payload.network is not None:
+        record.network = payload.network.strip()
+    if payload.chain_id is not None:
+        record.chain_id = payload.chain_id
+    if payload.contract_address is not None:
+        record.contract_address = payload.contract_address.strip()
+    if payload.deploy_tx_hash is not None:
+        record.deploy_tx_hash = payload.deploy_tx_hash.strip() or None
+    if payload.contract_metadata is not None:
+        record.contract_metadata = payload.contract_metadata
+    await db.commit()
+    await db.refresh(record)
+    return _agent_nft_contract_to_dict(record)
+
+
+@router.delete("/agent-nft-contracts/{contract_id}")
+async def delete_agent_nft_contract(
+    contract_id: int,
+    user: User = Depends(get_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a registered agent NFT contract. Admin only."""
+    result = await db.execute(select(AgentNftContract).where(AgentNftContract.id == contract_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(404, "Agent NFT contract not found")
+    await db.delete(record)
+    await db.commit()
+    return {"ok": True, "id": contract_id}
 
 
 @router.post("/agent-nft-contracts")

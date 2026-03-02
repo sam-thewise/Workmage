@@ -26,6 +26,10 @@ celery_app.conf.beat_schedule = {
         "schedule": 60.0,
         "args": ["fuji"],
     },
+    "run-x-authority-scheduled": {
+        "task": "app.worker.tasks.run_x_authority_scheduled",
+        "schedule": 86400.0,  # daily
+    },
 }
 
 # Ensure tasks are registered when app loads (required for run_chain_task, run_agent_task)

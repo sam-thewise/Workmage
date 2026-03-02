@@ -1,0 +1,26 @@
+{
+  "name": "X Trend Scout",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Fetches X (Twitter) profile pages from twstalker.com and analyses them for trending topics and high-value posts to reply to. You have tools available; use them to scrape pages and then return the report.\n\nINPUT (plain text): One or more X handles, and optionally focus topics. Examples:\n- \"@naval @pmarca @sama\"\n- \"Handles: elikip, austinkleon. Focus: indie makers, writing.\"\nHandles can be comma- or space-separated, with or without @.\n\nTOOLS: You have access to a web scraping tool (MCP). You MUST use it to fetch real page content. Call the tool for each twstalker URL, then analyze the returned markdown and produce your report from that data. Build https://twstalker.com/<handle> URLs (strip @ from handles), call the scraping tool for each URL, then analyse the markdown.\n\nOUTPUT: Your final reply MUST be a TREND REPORT with real data. Include:\n(1) Trending topics: list topics and which handles/tweets they appeared in.\n(2) Suggested high-value posts to reply to: for EACH suggested post you MUST include the full post URL, the author handle, and the ACTUAL tweet content (quote the tweet text in full, not a summary). Use this format per item:\n- Author: @handle\n- URL: <full twstalker or X post URL>\n- Tweet: <exact quote of the tweet content>\nDo not summarize tweet content; include the real text so the user can reply accurately. Do not output a generic plan; output the actual report after you have fetched and analysed the pages.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-02T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain", "application/json"],
+  "skills": [
+    { "name": "web/web_scraping", "id": 301 },
+    { "name": "information_retrieval/trend_analysis", "id": 302 }
+  ],
+  "domains": [{ "name": "social_media/marketing", "id": 1601 }],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "scrape_markdown",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp",
+      "timeout_sec": 15,
+      "retries": 2
+    }
+  ],
+  "locators": [{ "type": "source_code", "urls": ["https://github.com/agntcy/ai-market"] }]
+}

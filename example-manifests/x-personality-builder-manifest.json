@@ -1,0 +1,26 @@
+{
+  "name": "X Personality Builder",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Builds a short personality/voice profile from your tweets for use in content generation. You have tools available; use them when the input is a URL.\n\nINPUT (plain text): Either (1) pasted tweet/post content, or (2) a twstalker.com profile URL (e.g. https://twstalker.com/YourHandle). If the input looks like a URL, you MUST call the scraping tool first to fetch the page content, then analyze that text.\n\nTOOLS: You have access to a web scraping tool (MCP). When input is a URL, call it to fetch the page markdown, then analyze the resulting text. Do not only describe the process—call the tool, then produce the profile from the fetched content.\n\nOUTPUT: Your final reply MUST be a short personality/voice profile only (no preamble or plan). Include: tone and style; do's and don'ts; notable vocabulary or phrases; stance or themes if evident. Keep it concise (one or two short paragraphs or a bullet list). This profile will be used so that generated posts and replies sound like the person, not a generic bot. Output only the profile text.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-02T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain"],
+  "skills": [
+    { "name": "natural_language_processing/text_analysis", "id": 201 },
+    { "name": "web/web_scraping", "id": 301 }
+  ],
+  "domains": [{ "name": "social_media/marketing", "id": 1601 }],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "scrape_markdown",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp",
+      "timeout_sec": 15,
+      "retries": 2
+    }
+  ],
+  "locators": [{ "type": "source_code", "urls": ["https://github.com/agntcy/ai-market"] }]
+}

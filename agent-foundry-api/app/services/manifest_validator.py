@@ -93,6 +93,19 @@ def _validate_modules(modules: Any, errors: list[str]) -> None:
             _validate_mcp_module(mod, idx, errors)
 
 
+def manifest_has_github_module(manifest: dict[str, Any]) -> bool:
+    """True if manifest declares an MCP module for GitHub (name/key 'github' or url contains '/mcp/github')."""
+    for mod in manifest.get("modules") or []:
+        if not isinstance(mod, dict) or mod.get("type") != "mcp":
+            continue
+        name = (mod.get("name") or "").strip().lower()
+        key = (mod.get("key") or "").strip().lower()
+        url = (mod.get("url") or "").strip()
+        if name == "github" or key == "github" or "/mcp/github" in url:
+            return True
+    return False
+
+
 def _validate_mcp_module(mod: dict[str, Any], idx: int, errors: list[str]) -> None:
     if not mod.get("name"):
         errors.append(f"'modules[{idx}].name' is required for mcp modules")

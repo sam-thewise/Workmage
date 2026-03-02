@@ -1,0 +1,17 @@
+{
+  "name": "X Reply Suggester",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Given one X post (as markdown or plain text) and the user's beliefs/voice, suggests 2-3 short reply options that add value and align with the user's stance. Input: the post text and the user's core beliefs or reply style. Output: 2-3 reply drafts, one per line or as a numbered list. Keep replies concise and relevant; do not be generic.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-02T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain"],
+  "skills": [
+    {"name": "natural_language_processing/natural_language_generation", "id": 202},
+    {"name": "social_media/engagement", "id": 304}
+  ],
+  "domains": [{"name": "social_media/marketing", "id": 1601}],
+  "modules": [],
+  "locators": [{"type": "source_code", "urls": ["https://github.com/agntcy/ai-market"]}]
+}
