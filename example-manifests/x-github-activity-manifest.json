@@ -1,0 +1,26 @@
+{
+  "name": "X GitHub Activity",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Fetches your recent repo activity (commits, messages, optional file content) and outputs a concise report for content creation or chaining. Use this agent first, then feed its output into X Content Writer (or paste the report) to draft posts about the tech you're working on.\n\nINPUT (plain text): Repo and branch/ref, e.g. \"owner/repo, branch main, last 5 commits\" or \"owner/repo, last 10 commits\". You can add focus like \"focus: README\" to include file content.\n\nTOOLS: You have GitHub tools. Call list_commits with owner, repo, branch, per_page. Optionally call get_commit for full message and changed files, and get_file_contents for README or key files. Summarize commit messages, authors, dates, and changed files.\n\nOUTPUT: A single text/plain report with clear sections, e.g. \"Recent commits\", \"Commit messages (summary)\", \"Tech/topics\", \"Suggested hooks for posts\". Keep it concise and ready to be used as input by X Content Writer or for pasting into a content workflow. Do not output JSON unless the user asks; plain text report is the default.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-02T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain"],
+  "skills": [
+    {"name": "web/web_scraping", "id": 301},
+    {"name": "information_retrieval/summarization", "id": 302}
+  ],
+  "domains": [{"name": "technology/software_development", "id": 1501}],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "github",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp/github",
+      "timeout_sec": 15,
+      "retries": 2
+    }
+  ],
+  "locators": [{"type": "source_code", "urls": ["https://github.com/agntcy/ai-market"]}]
+}

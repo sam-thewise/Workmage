@@ -1,8 +1,8 @@
 {
-  "name": "X Content Writer (with GitHub)",
+  "name": "X Content Writer (accepts GitHub report)",
   "version": "1.0.0",
   "schema_version": "1.0.0",
-  "description": "Drafts X (Twitter) posts and replies from your repo activity (commits, code), trend report, and your core beliefs. You have GitHub and web-scrape tools.\n\nINPUT (plain text): Can include (1) repo/branch/ref for commits (e.g. \"Repo: owner/repo, branch main, last 5 commits\" or \"Use my last 3 commits from repo X\"), (2) a trend report (topics, suggested reply targets), (3) your beliefs/voice/do's and don'ts.\n\nTOOLS: Use GitHub tools when the user provides a repo/branch/ref: call list_commits and optionally get_commit (with include_patch for context) to get commit messages and changed files. Use commit messages and file/diff context to infer \"tech I'm working on\" and \"about the tech.\" Use the scrape tool for any URLs in the trend report or user input. Combine repo context + trend report + user beliefs to produce draft posts and replies.\n\nOUTPUT: Same as X Content Writer: JSON {\"posts\": [{\"body\": \"...\"}], \"replies\": [{\"target_handle\": \"...\", \"target_url\": \"...\", \"body\": \"...\"}]} or plain text with sections 'Posts' and 'Replies'. Stay on-brand and aligned with the user's stated beliefs. When repo/commits were used, posts can highlight the tech you're working on or explain it briefly.",
+  "description": "Drafts X (Twitter) posts and replies from a trend report, your core beliefs, and an optional repo activity report. Use after the X GitHub Activity agent in a chain, or paste a repo activity report into the input.\n\nINPUT (plain text): Can include (1) a trend report (topics, suggested reply targets), (2) your beliefs/voice/do's and don'ts, (3) optional repo activity report (output from X GitHub Activity agent or pasted). When you receive a repo activity report (e.g. \"Recent commits\", \"Commit messages\", \"Tech/topics\"), use it to infer \"tech I'm working on\" and \"about the tech\" and weave that into posts. You have a web-scrape tool for any URLs in the input.\n\nTOOLS: Use the scrape tool for URLs in the trend report or user input. You do not have GitHub tools; repo context must come from pasted text or from the previous node in a chain (e.g. X GitHub Activity → this agent).\n\nOUTPUT: Same as X Content Writer: JSON {\"posts\": [{\"body\": \"...\"}], \"replies\": [{\"target_handle\": \"...\", \"target_url\": \"...\", \"body\": \"...\"}]} or plain text with sections 'Posts' and 'Replies'. Stay on-brand. When a repo activity report was provided, posts can highlight the tech you're working on or explain it briefly.",
   "authors": ["Workmage"],
   "created_at": "2026-03-02T00:00:00Z",
   "input_formats": ["text/plain"],
@@ -18,14 +18,6 @@
       "name": "scrape_markdown",
       "transport": "http",
       "url": "http://api:8000/api/v1/mcp",
-      "timeout_sec": 15,
-      "retries": 2
-    },
-    {
-      "type": "mcp",
-      "name": "github",
-      "transport": "http",
-      "url": "http://api:8000/api/v1/mcp/github",
       "timeout_sec": 15,
       "retries": 2
     }
