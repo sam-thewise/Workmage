@@ -24,10 +24,10 @@ output: text/plain   input: text/plain   input: text/plain
 | `report-writer-manifest.json` | text/plain | text/plain, application/json | **Web Summarizer** (outputs text/plain) |
 | `avalanche-action-agent.json` | text/plain | text/plain, application/json | Demonstrates MCP + capability modules + execution policy |
 | `web-summarizer-mcp-manifest.json` | text/plain, text/url | text/plain | Web Summarizer using the **built-in** MCP scrape tool (token-efficient markdown at `API_BASE/api/v1/mcp`) |
-| `x-trend-scout-manifest.json` | text/plain | text/plain, application/json | X Trend Scout: twstalker URLs + scrape → trend report + reply targets |
+| `x-trend-scout-manifest.json` | text/plain | text/plain, application/json | X Trend Scout: direct Twitter MCP timeline fetch → trend report + reply targets |
 | `x-content-writer-manifest.json` | text/plain | text/plain, application/json | Drafts posts and replies from trend report + beliefs |
 | `x-reply-suggester-manifest.json` | text/plain | text/plain | Suggests 2–3 reply options for a single post |
-| `x-personality-builder-manifest.json` | text/plain | text/plain | Builds personality/voice profile from pasted tweets or twstalker URL (MCP scrape); use in Setup lane and save to a slug, then feed slug to Content Writer |
+| `x-personality-builder-manifest.json` | text/plain | text/plain | Builds personality/voice profile from pasted tweets/handles using direct Twitter MCP tools; use in Setup lane and save to a slug, then feed slug to Content Writer |
 | `x-github-activity-manifest.json` | text/plain | text/plain | **GitHub scraper**: fetches repo commits, messages, optional file content; outputs a report for content creation. **Requires a GitHub token.** Chain into X Content Writer to support the import. |
 | `x-content-writer-github-manifest.json` | text/plain | text/plain, application/json | X Content Writer that **accepts** a repo activity report (from X GitHub Activity or pasted) plus trend report + beliefs; has scrape tool for URLs. Use after GitHub Activity in a chain. |
 
@@ -46,6 +46,16 @@ The GitHub-related flow is split into two agents so the scraper is separate and 
 ### X Authority workflow (Trend Scout → Content Writer)
 
 Chain **X Trend Scout** → **X Content Writer** for founder authority-building: input expert handles, get trend report, then draft posts and replies. Create content drafts via `POST /api/v1/content-drafts/bulk` from the chain output; use the Drafts UI to edit and approve before copying to X.
+
+### Direct Twitter MCP source
+
+The API now provides a dedicated MCP endpoint at `/api/v1/mcp/twitter` with tools:
+
+- `fetch_x_profile_timeline(handle, limit)`
+- `fetch_x_post(url_or_id)`
+- `search_x_posts(query, limit)`
+
+This endpoint uses backend cookie sessions (JSONL file) and returns normalized post data as JSON text. Configure with env vars such as `X_SOURCE_ENABLED=true`, `X_SESSIONS_FILE`, and the `X_QUERY_*` GraphQL query IDs.
 
 ### Web scraping tool (token-efficient markdown)
 

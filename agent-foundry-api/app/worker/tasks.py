@@ -1,5 +1,76 @@
 """Celery tasks for agent execution."""
+import logging
+
 from app.worker.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
+PROMPT_DEBUG_LIMIT = 4000
+
+
+def _truncate_debug(value: str, limit: int = PROMPT_DEBUG_LIMIT) -> str:
+    if len(value) <= limit:
+        return value
+    return f"{value[:limit]}...[truncated {len(value) - limit} chars]"
+
+
+def _log_prompt_debug(
+    *,
+    phase: str,
+    task_name: str,
+    model: str,
+    manifest_name: str,
+    user_input: str,
+    input_parts: list[dict] | None = None,
+) -> None:
+    """Log incoming prompt payload for debugging prompt plumbing."""
+    lines = [
+        f"[prompt-debug] phase={phase} task={task_name} model={model} manifest={manifest_name}",
+        "[prompt-debug] user_input:",
+        _truncate_debug((user_input or "").strip() or "(empty)"),
+    ]
+    if input_parts:
+        lines.append(f"[prompt-debug] input_parts_count={len(input_parts)}")
+        for idx, part in enumerate(input_parts, start=1):
+            label = (part or {}).get("label") or f"part_{idx}"
+            content = ((part or {}).get("content") or "").strip()
+            lines.append(f"[prompt-debug] input_part[{idx}] label={label}")
+            lines.append(_truncate_debug(content or "(empty)"))
+    else:
+        lines.append("[prompt-debug] input_parts_count=0")
+    logger.info("\n".join(lines))
+
+
+def _log_setup_graph_debug(
+    *,
+    all_nodes: dict[str, dict],
+    setup_node_ids: set[str],
+    included_node_ids: set[str],
+    edges: list[dict],
+    setup_edges: list[dict],
+) -> None:
+    """Log setup graph filtering so lane mismatches are obvious."""
+    all_nodes_count = len(all_nodes)
+    included_sorted = sorted(included_node_ids)
+    setup_sorted = sorted(setup_node_ids)
+    dropped_edges = []
+    setup_edge_keys = {(e.get("source"), e.get("target")) for e in setup_edges}
+    for e in edges:
+        src, tgt = e.get("source"), e.get("target")
+        if (src, tgt) in setup_edge_keys:
+            continue
+        if tgt in setup_node_ids:
+            src_node = all_nodes.get(src, {}) if src else {}
+            dropped_edges.append(
+                f"{src}->{tgt} (src_type={src_node.get('type')} src_lane={src_node.get('lane')})"
+            )
+    logger.info(
+        "[setup-debug] all_nodes=%s setup_node_ids=%s included_node_ids=%s setup_edges=%s dropped_to_setup=%s",
+        all_nodes_count,
+        setup_sorted,
+        included_sorted,
+        len(setup_edges),
+        dropped_edges if dropped_edges else "[]",
+    )
 
 
 @celery_app.task(bind=True)
@@ -87,8 +158,24 @@ def run_chain_task(
         setup_node_ids = {nid for nid, n in all_nodes.items() if n.get("lane") == "setup"}
         if not setup_node_ids:
             return {"status": "completed", "content": "No setup nodes in this chain.", "usage": {}}
-        setup_nodes = {nid: all_nodes[nid] for nid in setup_node_ids}
-        setup_edges = [e for e in edges if e.get("source") in setup_node_ids and e.get("target") in setup_node_ids]
+        # Allow slug feeders into setup nodes even if the slug node is on main lane.
+        feeder_slug_ids = {
+            e.get("source")
+            for e in edges
+            if e.get("target") in setup_node_ids
+            and e.get("source") in all_nodes
+            and all_nodes[e.get("source")].get("type") == "slug"
+        }
+        included_setup_ids = setup_node_ids | {nid for nid in feeder_slug_ids if nid}
+        setup_nodes = {nid: all_nodes[nid] for nid in included_setup_ids}
+        setup_edges = [e for e in edges if e.get("source") in included_setup_ids and e.get("target") in setup_node_ids]
+        _log_setup_graph_debug(
+            all_nodes=all_nodes,
+            setup_node_ids=setup_node_ids,
+            included_node_ids=included_setup_ids,
+            edges=edges,
+            setup_edges=setup_edges,
+        )
         order = _topological_order(list(setup_nodes.values()), setup_edges)
         incoming = {nid: [] for nid in setup_nodes}
         for e in setup_edges:
@@ -100,7 +187,20 @@ def run_chain_task(
         run_owner = run_owner_id or buyer_id
         for nid in order:
             node = setup_nodes.get(nid)
-            if not node or node.get("type") == "slug":
+            if not node:
+                continue
+            if node.get("type") == "slug":
+                # Setup-lane slug nodes can feed setup agents directly.
+                set_content = (node.get("content") or "").strip()
+                if set_content:
+                    outputs[nid] = set_content
+                else:
+                    slug_name = node.get("slug") or ""
+                    if run_owner and slug_name:
+                        with Session() as db:
+                            outputs[nid] = _get_saved_content(db, run_owner, slug_name)
+                    else:
+                        outputs[nid] = ""
                 continue
             agent_id = node.get("agent_id")
             if agent_id is None:
@@ -115,6 +215,21 @@ def run_chain_task(
             preds = incoming.get(nid, [])
             user_input_val = user_input if not preds else ""
             input_parts = [{"content": outputs[p], "format": "text/plain"} for p in preds if p in outputs]
+            logger.info(
+                "[setup-debug] node=%s preds=%s resolved_input_parts=%s output_keys=%s",
+                nid,
+                preds,
+                len(input_parts),
+                sorted(outputs.keys()),
+            )
+            _log_prompt_debug(
+                phase=f"chain_setup_node:{nid}",
+                task_name="run_chain_task",
+                model=model,
+                manifest_name=(agent.manifest or {}).get("name", f"Agent #{agent_id}"),
+                user_input=user_input_val,
+                input_parts=input_parts if input_parts else None,
+            )
             from app.worker.sandbox import run_agent_in_sandbox
             content, usage = run_agent_in_sandbox(
                 manifest=agent.manifest,
@@ -226,6 +341,14 @@ def run_chain_task(
                 "format": "text/plain",
                 "label": "Personality / voice",
             })
+        _log_prompt_debug(
+            phase=f"chain_main_node:{nid}",
+            task_name="run_chain_task",
+            model=model,
+            manifest_name=(agent.manifest or {}).get("name", f"Agent #{agent_id}"),
+            user_input=user_input_val,
+            input_parts=input_parts if input_parts else None,
+        )
         from app.worker.sandbox import run_agent_in_sandbox
         content, usage = run_agent_in_sandbox(
             manifest=agent.manifest,
@@ -279,6 +402,14 @@ def run_agent_task(
         agent = result.scalar_one_or_none()
     if not agent:
         return {"status": "error", "content": "Agent not found"}
+    _log_prompt_debug(
+        phase="single_agent",
+        task_name="run_agent_task",
+        model=model,
+        manifest_name=(agent.manifest or {}).get("name", f"Agent #{agent_id}"),
+        user_input=user_input,
+        input_parts=None,
+    )
     from app.worker.sandbox import run_agent_in_sandbox
     content, usage = run_agent_in_sandbox(
         manifest=agent.manifest,

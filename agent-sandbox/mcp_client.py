@@ -8,6 +8,7 @@ This module provides:
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.error
 import urllib.request
@@ -17,6 +18,8 @@ from typing import Any
 DEFAULT_TIMEOUT_SEC = 12
 DEFAULT_RETRIES = 2
 DEFAULT_BACKOFF_SEC = 0.5
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -136,6 +139,7 @@ def get_mcp_tools_from_manifest(manifest: dict[str, Any]) -> list[dict[str, Any]
                         tools.append(_normalize_tool_schema(tool, key, server.name))
         except Exception:
             # Discovery failures are non-fatal for the run. Tool call will fail loudly if invoked.
+            logger.warning("MCP tools/list failed for server=%s url=%s", server.name, server.url, exc_info=True)
             continue
     return tools
 
@@ -180,6 +184,13 @@ def execute_mcp_tool(
             extra_headers=extra_headers,
         )
     except Exception as exc:
+        logger.warning(
+            "MCP tools/call failed for server=%s tool=%s url=%s",
+            server.name,
+            inner_tool_name,
+            server.url,
+            exc_info=True,
+        )
         return f"MCP execution failed: {exc}"
 
     content = result.get("content") if isinstance(result, dict) else None

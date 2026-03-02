@@ -11,6 +11,18 @@ INPUT_DIR = os.environ.get("AGENT_INPUT", "/input")
 OUTPUT_DIR = os.environ.get("AGENT_OUTPUT", "/output")
 INPUT_FILE = os.path.join(INPUT_DIR, "request.json")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "response.json")
+DEBUG_TRUNCATE = 1200
+
+
+def _dbg(message: str) -> None:
+    """Write debug lines to stderr so worker can surface sandbox telemetry."""
+    sys.stderr.write(f"[sandbox-debug] {message}\n")
+
+
+def _truncate(value: str, limit: int = DEBUG_TRUNCATE) -> str:
+    if len(value) <= limit:
+        return value
+    return f"{value[:limit]}...[truncated {len(value) - limit} chars]"
 
 
 def main():
@@ -54,11 +66,17 @@ def main():
         import litellm
 
         mcp_tools = get_mcp_tools_from_manifest(manifest)
+        manifest_modules = [m for m in (manifest.get("modules") or []) if isinstance(m, dict) and m.get("type") == "mcp"]
+        _dbg(f"model={model} manifest={manifest.get('name', 'Agent')}")
+        _dbg(f"manifest_mcp_modules={len(manifest_modules)} discovered_tools={len(mcp_tools)}")
+        if mcp_tools:
+            _dbg("discovered_tool_names=" + ", ".join(t.get("name", "<unnamed>") for t in mcp_tools))
+
         usage_dict = {"prompt_tokens": 0, "completion_tokens": 0}
         content = ""
         max_rounds = 8
 
-        for _ in range(max_rounds):
+        for round_idx in range(max_rounds):
             kwargs = {"model": model, "messages": messages}
             if api_key:
                 kwargs["api_key"] = api_key
@@ -76,6 +94,7 @@ def main():
 
             assistant_content = message.content or ""
             tool_calls = getattr(message, "tool_calls", None) or []
+            _dbg(f"round={round_idx + 1} tool_calls={len(tool_calls)}")
 
             if not tool_calls:
                 content = assistant_content
@@ -95,6 +114,7 @@ def main():
                     parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
                 except Exception:
                     parsed_args = {}
+                _dbg(f"tool_call name={fn_name} args={_truncate(json.dumps(parsed_args, ensure_ascii=False))}")
 
                 parsed = parse_mcp_tool_name(fn_name)
                 if parsed:
@@ -103,6 +123,7 @@ def main():
                     tool_result = execute_mcp_tool(manifest, fn_name, parsed_args, github_token=gh_token)
                 else:
                     tool_result = f"Tool `{fn_name}` not registered in this runtime"
+                _dbg(f"tool_result name={fn_name} content={_truncate(str(tool_result))}")
 
                 messages.append(
                     {

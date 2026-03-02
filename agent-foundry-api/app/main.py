@@ -1,5 +1,6 @@
 """Agent Foundry API - Main application."""
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,9 @@ from app.api.webhooks import router as webhooks_router
 from app.core.config import settings
 from app.db.base import AsyncSessionLocal
 from app.models.user import User, UserRole
+from app.services.twitter_source import get_twitter_source_service
 
+logger = logging.getLogger(__name__)
 
 async def promote_admin_emails():
     """Promote users with ADMIN_EMAILS to admin role on startup."""
@@ -30,6 +33,10 @@ async def promote_admin_emails():
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
     await promote_admin_emails()
+    try:
+        get_twitter_source_service().startup_validate()
+    except Exception as exc:
+        logger.warning("Twitter source startup validation failed: %s", exc)
     yield
 
 

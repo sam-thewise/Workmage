@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request, Response
+import httpx
 
 from trafilatura import extract, fetch_url
 from trafilatura.settings import DEFAULT_CONFIG
@@ -46,6 +47,16 @@ TOOL_INPUT_SCHEMA = {
 FETCH_TIMEOUT = 15
 MAX_FILE_SIZE = 2 * 1024 * 1024
 DEFAULT_MAX_LENGTH = 100_000
+HTTP_FALLBACK_TIMEOUT = 20
+HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+}
 
 
 def _trafilatura_config():
@@ -70,8 +81,25 @@ def _scrape_as_markdown(url: str, max_length: int | None = None, include_metadat
     """Fetch URL and return main content as markdown."""
     config = _trafilatura_config()
     downloaded = fetch_url(url, config=config)
+    status_hint = None
     if not downloaded:
-        raise ValueError("Failed to fetch URL or page is empty")
+        # Fallback for sites where trafilatura downloader returns empty body.
+        try:
+            with httpx.Client(
+                timeout=HTTP_FALLBACK_TIMEOUT,
+                follow_redirects=True,
+                headers=HTTP_HEADERS,
+            ) as client:
+                resp = client.get(url)
+            status_hint = resp.status_code
+            body = resp.text or ""
+            if not body.strip():
+                raise ValueError(
+                    f"Failed to fetch URL: upstream returned status {resp.status_code} with empty body"
+                )
+            downloaded = body
+        except httpx.HTTPError as e:
+            raise ValueError(f"Failed to fetch URL via HTTP fallback: {e}") from e
     result = extract(
         downloaded,
         output_format="markdown",
@@ -81,6 +109,10 @@ def _scrape_as_markdown(url: str, max_length: int | None = None, include_metadat
         config=config,
     )
     if not result:
+        if status_hint:
+            raise ValueError(
+                f"No main content could be extracted (HTTP status {status_hint}; page may block scraping)"
+            )
         raise ValueError("No main content could be extracted")
     if max_length is not None and max_length > 0 and len(result) > max_length:
         result = result[:max_length] + "\n\n[... truncated]"
