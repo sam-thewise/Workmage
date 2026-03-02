@@ -31,6 +31,3 @@ celery_app.conf.beat_schedule = {
         "schedule": 86400.0,  # daily
     },
 }
-
-# Ensure tasks are registered when app loads (required for run_chain_task, run_agent_task)
-from app.worker import tasks  # noqa: F401, E402

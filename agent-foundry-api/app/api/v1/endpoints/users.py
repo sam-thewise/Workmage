@@ -28,6 +28,19 @@ class GitHubTokenRequest(BaseModel):
     token: str
 
 
+@router.get("/me/github-token")
+async def get_github_token_status(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return whether the user has a GitHub token saved (no token value)."""
+    result = await db.execute(
+        select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+    )
+    row = result.scalar_one_or_none()
+    return {"has_token": row is not None}
+
+
 @router.post("/me/github-token")
 async def save_github_token(
     payload: GitHubTokenRequest,

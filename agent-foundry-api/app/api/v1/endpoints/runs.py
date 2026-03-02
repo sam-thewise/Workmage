@@ -17,8 +17,6 @@ from app.models.user import User
 from app.models.user_github_token import UserGitHubToken
 from app.models.user_llm_key import UserLLMKey
 from app.services.manifest_validator import manifest_has_github_module
-from app.worker.celery_app import celery_app
-from app.worker.tasks import run_agent_task
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 JOB_STORE: dict[str, tuple[str, int]] = {}  # job_id -> (celery_task_id, buyer_id)
@@ -104,6 +102,8 @@ async def create_run(
             )
         github_token = decrypt_api_key(gh_row.encrypted_token)
 
+    from app.worker.tasks import run_agent_task
+
     job_id = str(uuid4())
     task = run_agent_task.delay(
         agent_id=payload.agent_id,
@@ -138,6 +138,8 @@ async def get_subscription(
 @router.get("/{job_id}")
 async def get_run_status(job_id: str):
     """Poll run status and result."""
+    from app.worker.celery_app import celery_app
+
     stored = JOB_STORE.get(job_id)
     task_id = stored[0] if isinstance(stored, tuple) else stored
     if not task_id:

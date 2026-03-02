@@ -29,6 +29,7 @@
             <li><strong>Main lane:</strong> Add <em>Slug</em> nodes from the palette, connect a slug's output to an agent's input. Click <em>Run main</em> to run the workflow using saved outputs.</li>
             <li><strong>Connect:</strong> Right dot (output) to left dot (input). Slug nodes have only an output.</li>
             <li><strong>Move:</strong> Drag the node body (not the circles).</li>
+            <li><strong>Delete:</strong> Select a node and press <kbd>Del</kbd> or <kbd>Backspace</kbd> to remove it.</li>
             <li><strong>Bottom buttons:</strong> + Zoom in, − Zoom out, ⊡ Fit view, ⊙/⊘ Lock pan.</li>
           </ul>
         </details>
@@ -76,7 +77,13 @@
           <p class="text-caption text-medium-emphasis mt-1">Prefill this agent's input from saved output (same as connecting a slug node).</p>
         </template>
       </div>
-      <div class="canvas-wrap" @dragover.prevent @drop="onDrop">
+      <div
+        class="canvas-wrap"
+        tabindex="0"
+        @dragover.prevent
+        @drop="onDrop"
+        @keydown="onCanvasKeydown"
+      >
         <VueFlow
           v-model:nodes="nodes"
           v-model:edges="edges"
@@ -119,7 +126,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, Handle, ConnectionMode } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -183,6 +190,22 @@ function onNodeClick({ node }) {
     ...n,
     selected: n.id === node.id,
   }))
+}
+
+function deleteSelectedNodes() {
+  const selectedIds = new Set(nodes.value.filter(n => n.selected).map(n => n.id))
+  if (selectedIds.size === 0) return
+  nodes.value = nodes.value.filter(n => !selectedIds.has(n.id))
+  edges.value = edges.value.filter(e => !selectedIds.has(e.source) && !selectedIds.has(e.target))
+  refreshEntryBadges()
+}
+
+function onCanvasKeydown(ev) {
+  if (ev.key !== 'Delete' && ev.key !== 'Backspace') return
+  const target = ev.target
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+  deleteSelectedNodes()
+  ev.preventDefault()
 }
 
 

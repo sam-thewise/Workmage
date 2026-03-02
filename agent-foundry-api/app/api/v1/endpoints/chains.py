@@ -22,8 +22,6 @@ from app.models.user_personality import UserPersonalityProfile
 from app.schemas.chain import ChainCreate, ChainListResponse, ChainResponse, ChainRunRequest, ChainUpdate
 from app.services.chain_compatibility import can_chain, validate_chain_definition
 from app.services.manifest_validator import manifest_has_github_module
-from app.worker.celery_app import celery_app
-from app.worker.tasks import run_chain_task
 
 router = APIRouter(prefix="/chains", tags=["chains"])
 CHAIN_JOB_STORE: dict[str, tuple[str, int]] = {}  # job_id -> (celery_task_id, buyer_id)
@@ -241,6 +239,8 @@ async def check_compatibility(
 @router.get("/runs/{job_id}")
 async def get_chain_run_status(job_id: str):
     """Poll chain run status and result."""
+    from app.worker.celery_app import celery_app
+
     stored = CHAIN_JOB_STORE.get(job_id)
     task_id = stored[0] if isinstance(stored, tuple) else stored
     if not task_id:
@@ -485,6 +485,8 @@ async def run_chain(
                     "This chain uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
                 )
             github_token = decrypt_api_key(gh_row.encrypted_token)
+
+    from app.worker.tasks import run_chain_task
 
     job_id = str(uuid4())
     task = run_chain_task.delay(

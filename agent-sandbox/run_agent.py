@@ -28,13 +28,23 @@ def main():
     system_prompt = _build_system_prompt(manifest)
     user_content = user_input
     if input_parts:
-        combined = [user_input] if user_input else []
+        parts = []
+        if user_input and str(user_input).strip():
+            parts.append(str(user_input).strip())
         for part in input_parts:
-            if isinstance(part, dict) and "content" in part:
-                combined.append(str(part["content"]))
+            if isinstance(part, dict):
+                content = (part.get("content") or "").strip()
+                label = part.get("label") or f"Input {len(parts) + 1}"
+                parts.append(f"--- {label} ---\n\n{content}" if content else f"--- {label} ---\n\n(no content)")
             elif isinstance(part, str):
-                combined.append(part)
-        user_content = "\n\n".join(combined) if combined else user_input
+                parts.append(part)
+        if parts:
+            user_content = (
+                "The following sections are inputs from your chain. Use them according to your instructions.\n\n"
+                + "\n\n".join(parts)
+            )
+        else:
+            user_content = user_input
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},

@@ -2,7 +2,7 @@
   "name": "X Content Writer",
   "version": "1.0.0",
   "schema_version": "1.0.0",
-  "description": "Drafts X (Twitter) posts and replies from a trend report and the user's core beliefs. Input: trend report (topics, suggested reply targets) plus the user's beliefs/voice/do's and don'ts. Output: draft posts for the user's feed and draft replies for specific posts/people. Output as JSON: {\"posts\": [{\"body\": \"...\"}], \"replies\": [{\"target_handle\": \"...\", \"target_url\": \"...\", \"body\": \"...\"}]} or clear plain text with sections 'Posts' and 'Replies'. Stay on-brand and aligned with the user's stated beliefs.",
+  "description": "Drafts X (Twitter) posts and replies from provided chain inputs: trend report, personality/beliefs, and optional repo/activity context.\n\nINPUT (plain text): May include labeled sections from upstream nodes (for example: \"Output: X Trend Scout\", \"Slug: personality\", \"Output: X GitHub Activity\"). Treat these as authoritative context. If these sections are present, DO NOT ask the user to paste data again.\n\nTOOLS: You have a scrape_markdown MCP tool. Use it only for URLs that are already present in input sections.\n\nBEHAVIOR: Produce final content directly from available inputs. Do not output a plan or ask for extra input unless required fields are truly missing.\n\nOUTPUT: JSON {\"posts\": [{\"body\": \"...\"}], \"replies\": [{\"target_handle\": \"...\", \"target_url\": \"...\", \"body\": \"...\"}]} or plain text sections 'Posts' and 'Replies'. Replies should reference concrete target URLs/handles from the trend input when available. Stay on-brand and aligned with the user's stated beliefs.",
   "authors": ["Workmage"],
   "created_at": "2026-03-02T00:00:00Z",
   "input_formats": ["text/plain"],
@@ -12,6 +12,15 @@
     {"name": "social_media/content_creation", "id": 303}
   ],
   "domains": [{"name": "social_media/marketing", "id": 1601}],
-  "modules": [],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "scrape_markdown",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp",
+      "timeout_sec": 15,
+      "retries": 2
+    }
+  ],
   "locators": [{"type": "source_code", "urls": ["https://github.com/agntcy/ai-market"]}]
 }

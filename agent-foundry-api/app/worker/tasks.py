@@ -1,6 +1,5 @@
 """Celery tasks for agent execution."""
 from app.worker.celery_app import celery_app
-from app.worker.sandbox import run_agent_in_sandbox
 
 
 @celery_app.task(bind=True)
@@ -116,6 +115,7 @@ def run_chain_task(
             preds = incoming.get(nid, [])
             user_input_val = user_input if not preds else ""
             input_parts = [{"content": outputs[p], "format": "text/plain"} for p in preds if p in outputs]
+            from app.worker.sandbox import run_agent_in_sandbox
             content, usage = run_agent_in_sandbox(
                 manifest=agent.manifest,
                 user_input=user_input_val,
@@ -159,6 +159,14 @@ def run_chain_task(
         tgt, src = e.get("target"), e.get("source")
         if tgt and src:
             incoming[tgt].append(src)
+    # Preload agent names for section labels (so downstream nodes get "Output: X Trend Scout" etc.)
+    agent_ids_main = {n.get("agent_id") for n in main_nodes.values() if n.get("agent_id") is not None}
+    agent_labels_by_id = {}
+    if agent_ids_main:
+        with Session() as db:
+            agents_main = db.execute(select(Agent).where(Agent.id.in_(agent_ids_main))).scalars().all()
+            for a in agents_main:
+                agent_labels_by_id[a.id] = (a.manifest or {}).get("name") or f"Agent #{a.id}"
     outputs = {}
     agg_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     run_owner = run_owner_id or buyer_id
@@ -190,19 +198,35 @@ def run_chain_task(
         user_input_val = user_input if not preds else ""
         input_parts = []
         for p in preds:
-            if p in outputs and (outputs[p] or "").strip():
-                input_parts.append({"content": outputs[p], "format": "text/plain"})
+            if p not in outputs:
+                continue
+            pred_node = main_nodes.get(p)
+            if pred_node and pred_node.get("type") == "slug":
+                label = f"Slug: {pred_node.get('slug', p)}"
+            elif pred_node and pred_node.get("agent_id") is not None:
+                pred_agent_id = pred_node["agent_id"]
+                label = f"Output: {agent_labels_by_id.get(pred_agent_id, f'Agent #{pred_agent_id}')}"
+            else:
+                label = f"Input from chain ({len(input_parts) + 1})"
+            content = (outputs[p] or "").strip()
+            input_parts.append({"content": content, "format": "text/plain", "label": label})
         input_from_slug = (node.get("input_from_slug") or "").strip()
         if input_from_slug and run_owner:
             with Session() as db:
                 slug_content = _get_saved_content(db, run_owner, input_from_slug)
             if (slug_content or "").strip():
-                input_parts.append({"content": slug_content.strip(), "format": "text/plain"})
+                input_parts.append({
+                    "content": slug_content.strip(),
+                    "format": "text/plain",
+                    "label": f"Slug: {input_from_slug}",
+                })
         if personality_text and personality_text.strip():
             input_parts.append({
                 "content": "User voice/beliefs (use for tone and stance in generated content):\n\n" + personality_text.strip(),
                 "format": "text/plain",
+                "label": "Personality / voice",
             })
+        from app.worker.sandbox import run_agent_in_sandbox
         content, usage = run_agent_in_sandbox(
             manifest=agent.manifest,
             user_input=user_input_val,
@@ -255,6 +279,7 @@ def run_agent_task(
         agent = result.scalar_one_or_none()
     if not agent:
         return {"status": "error", "content": "Agent not found"}
+    from app.worker.sandbox import run_agent_in_sandbox
     content, usage = run_agent_in_sandbox(
         manifest=agent.manifest,
         user_input=user_input,
