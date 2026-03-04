@@ -173,7 +173,7 @@ def execute_mcp_tool(
         return f"MCP transport `{server.transport}` not supported yet"
 
     extra_headers = None
-    if server_key == "github" and github_token:
+    if server_key.lower() == "github" and github_token:
         extra_headers = {"Authorization": f"token {github_token}"}
 
     try:

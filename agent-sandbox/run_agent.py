@@ -119,7 +119,9 @@ def main():
                 parsed = parse_mcp_tool_name(fn_name)
                 if parsed:
                     server_key, _ = parsed
-                    gh_token = req.get("github_token") if server_key == "github" else None
+                    gh_token = req.get("github_token") if (server_key or "").lower() == "github" else None
+                    if (server_key or "").lower() == "github":
+                        _dbg(f"github_token_present={bool(gh_token)}")
                     tool_result = execute_mcp_tool(manifest, fn_name, parsed_args, github_token=gh_token)
                 else:
                     tool_result = f"Tool `{fn_name}` not registered in this runtime"

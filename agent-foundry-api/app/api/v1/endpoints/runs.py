@@ -90,17 +90,17 @@ async def create_run(
             raise HTTPException(400, f"No BYOK key for {provider}")
 
     github_token = None
-    if manifest_has_github_module(agent.manifest):
-        gh_result = await db.execute(
-            select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
-        )
-        gh_row = gh_result.scalar_one_or_none()
-        if not gh_row:
-            raise HTTPException(
-                400,
-                "This agent uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
-            )
+    gh_result = await db.execute(
+        select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+    )
+    gh_row = gh_result.scalar_one_or_none()
+    if gh_row:
         github_token = decrypt_api_key(gh_row.encrypted_token)
+    if manifest_has_github_module(agent.manifest) and not github_token:
+        raise HTTPException(
+            400,
+            "This agent uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
+        )
 
     from app.worker.tasks import run_agent_task
 

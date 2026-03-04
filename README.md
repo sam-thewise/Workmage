@@ -35,6 +35,7 @@ docker compose up -d
 - **Cost estimates**: Per-token estimates for platform-hosted runs
 - **MCP (Model Context Protocol)**: Agents can declare MCP servers in their manifest; the sandbox discovers tools and runs an iterative tool-call loop (e.g. Avalanche docs at `https://build.avax.network/api/mcp`)
 - **Web scraping tool (token-efficient markdown)**: The API exposes an MCP endpoint that provides a `scrape_as_markdown` tool. It fetches a URL and returns main content as markdown using [trafilatura](https://github.com/adbar/trafilatura) (main-content extraction), so agents use fewer tokens than raw HTML. To use it, add an MCP module to your agent manifest with `type: "mcp"`, `transport: "http"`, and `url` set to your API base + `/api/v1/mcp` (e.g. `https://your-api-host/api/v1/mcp`, or `http://api:8000/api/v1/mcp` when the sandbox and API share a Docker network). Optional: set `MCP_PUBLIC_URL` in `.env` if the MCP endpoint is served from a different URL.
+- **Direct Twitter source MCP**: The API supports `/api/v1/mcp/twitter` and proxies tool calls to the twitter-automation service.
 - **Action infrastructure**: Policy-controlled execution, agent wallets (ERC-6551–style), trust metadata (ERC-8004–aligned), simulation-first tx execution, and optional live broadcast after approval
 
 ## Makefile Commands
@@ -203,6 +204,65 @@ Agents declare MCP servers in the manifest `modules` array, e.g.:
 ```
 
 Optional: `key`, `headers` (for auth). The sandbox discovers tools via `tools/list` and executes via `tools/call` (HTTP JSON-RPC).
+
+## Twitter Source Setup (`/api/v1/mcp/twitter`)
+
+The API endpoint `/api/v1/mcp/twitter` proxies MCP tool calls to the `twitter-automation` service so agents can fetch timelines, posts, and search results.
+
+### 1) Configure env in root `.env`
+
+```env
+TWITTER_MCP_URL=http://twitter-automation:8010/mcp/twitter
+TWITTER_MCP_TIMEOUT_SEC=60
+TWITTER_MCP_RETRIES=2
+
+# scraper service account config (single account)
+TWITTER_AUTOMATION_USERNAME=<x_username>
+TWITTER_AUTOMATION_PASSWORD=<x_password>
+
+# optional: multiple accounts JSON
+# TWITTER_AUTOMATION_ACCOUNTS_JSON=[{"username":"acct1","password":"..."},{"username":"acct2","password":"..."}]
+
+TWITTER_AUTOMATION_USE_UNDETECTED=true
+TWITTER_AUTOMATION_CHROME_BINARY=/usr/bin/chromium
+TWITTER_AUTOMATION_CHROMEDRIVER_PATH=/usr/bin/chromedriver
+TWITTER_AUTOMATION_HEADLESS=true
+TWITTER_AUTOMATION_TIMEOUT_SEC=30
+TWITTER_AUTOMATION_OPERATION_TIMEOUT_SEC=45
+TWITTER_AUTOMATION_POST_LOAD_PAUSE_MS=500
+TWITTER_AUTOMATION_INITIAL_IDLE_AFTER_LOGIN_PAGE_MS=2000
+TWITTER_AUTOMATION_ACTION_PAUSE_MIN_MS=450
+TWITTER_AUTOMATION_ACTION_PAUSE_MAX_MS=1100
+TWITTER_AUTOMATION_TYPE_PAUSE_MIN_MS=45
+TWITTER_AUTOMATION_TYPE_PAUSE_MAX_MS=140
+TWITTER_AUTOMATION_ACCOUNT_COOLDOWN_SEC=120
+TWITTER_AUTOMATION_LOG_LEVEL=INFO
+TWITTER_AUTOMATION_DEBUG_DIR=/app/debug
+```
+
+### 2) Start services
+
+```bash
+docker compose up -d --build twitter-automation api worker
+```
+
+### 3) Verify MCP tools
+
+- `POST /api/v1/mcp/twitter` with JSON-RPC `tools/list`
+- `tools/call` with:
+  - `fetch_x_profile_timeline`
+  - `fetch_x_post`
+  - `search_x_posts`
+  - `check_x_sessions`
+
+### 4) Debugging login/selector failures
+
+When login or page scraping fails, the service writes artifacts to:
+
+- `twitter-automation-service/debug/*.png` (screenshot)
+- `twitter-automation-service/debug/*.html` (page source)
+
+The error returned from MCP includes the screenshot/html paths plus current URL/title for faster diagnosis.
 
 ### API surface
 

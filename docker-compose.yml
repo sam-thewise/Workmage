@@ -36,7 +36,7 @@ services:
     volumes:
       - ./agent-foundry-api:/app
       - ./.env:/app/.env:ro
-      - ./agent-foundry-api/.secrets:/app/.secrets:ro
+      - ./agent-foundry-api/.secrets:/app/.secrets
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/agentfoundry
       DATABASE_SYNC_URL: postgresql://postgres:postgres@postgres:5432/agentfoundry
@@ -48,21 +48,10 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      X_SOURCE_ENABLED: ${X_SOURCE_ENABLED:-false}
-      X_SESSIONS_FILE: ${X_SESSIONS_FILE:-/app/.secrets/x-sessions.jsonl}
-      X_API_BASE: ${X_API_BASE:-https://x.com}
-      X_BEARER_TOKEN: ${X_BEARER_TOKEN:-}
-      X_REQUEST_TIMEOUT_SEC: ${X_REQUEST_TIMEOUT_SEC:-20}
-      X_MAX_RETRIES: ${X_MAX_RETRIES:-3}
-      X_BACKOFF_BASE_MS: ${X_BACKOFF_BASE_MS:-300}
-      X_PROXY_URL: ${X_PROXY_URL:-}
-      X_SESSION_COOLDOWN_SEC: ${X_SESSION_COOLDOWN_SEC:-60}
-      X_BREAKER_FAILURE_THRESHOLD: ${X_BREAKER_FAILURE_THRESHOLD:-6}
-      X_BREAKER_RESET_SEC: ${X_BREAKER_RESET_SEC:-180}
-      X_QUERY_USER_BY_SCREEN_NAME: ${X_QUERY_USER_BY_SCREEN_NAME:-}
-      X_QUERY_USER_TWEETS: ${X_QUERY_USER_TWEETS:-}
-      X_QUERY_TWEET_DETAIL: ${X_QUERY_TWEET_DETAIL:-}
-      X_QUERY_SEARCH_TIMELINE: ${X_QUERY_SEARCH_TIMELINE:-}
+      TWITTER_MCP_URL: ${TWITTER_MCP_URL:-http://twitter-automation:8010/mcp/twitter}
+      TWITTER_MCP_TIMEOUT_SEC: ${TWITTER_MCP_TIMEOUT_SEC:-60}
+      TWITTER_MCP_RETRIES: ${TWITTER_MCP_RETRIES:-2}
+      TWITTER_MCP_HEALTH_PATH: ${TWITTER_MCP_HEALTH_PATH:-/health}
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +84,18 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - agent_runs:/agent-runs
     command: celery -A app.worker.celery_app worker --loglevel=info
+
+  twitter-automation:
+    build:
+      context: ./twitter-automation-service
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN:-}
+      TWITTER_AUTOMATION_BEARER_TOKEN: ${TWITTER_AUTOMATION_BEARER_TOKEN:-}
+      TWITTER_AUTOMATION_OPERATION_TIMEOUT_SEC: ${TWITTER_AUTOMATION_OPERATION_TIMEOUT_SEC:-45}
+      TWITTER_AUTOMATION_LOG_LEVEL: ${TWITTER_AUTOMATION_LOG_LEVEL:-INFO}
 
   agent-sandbox:
     build:

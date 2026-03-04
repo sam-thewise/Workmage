@@ -96,35 +96,11 @@ class Settings(BaseSettings):
     X_AUTHORITY_INPUT: str = ""  # Default input for the chain (e.g. expert handles or "today's trends")
     X_AUTHORITY_MODEL: str = "openai/gpt-5.2"
 
-    # Backend Twitter/X source (Nitter-style session/cookie approach)
-    X_SOURCE_ENABLED: bool = False
-    X_SESSIONS_FILE: str = "/app/.secrets/x-sessions.jsonl"
-    X_API_BASE: str = "https://x.com"
-    X_BEARER_TOKEN: str = ""
-    X_USER_AGENT: str = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    )
-    X_REQUEST_TIMEOUT_SEC: int = 20
-    X_MAX_RETRIES: int = 3
-    X_BACKOFF_BASE_MS: int = 300
-    X_PROXY_URL: str = ""
-    X_SESSION_COOLDOWN_SEC: int = 60
-    X_BREAKER_FAILURE_THRESHOLD: int = 6
-    X_BREAKER_RESET_SEC: int = 180
-    # Query IDs change over time; configure via environment without code changes.
-    X_QUERY_USER_BY_SCREEN_NAME: str = ""
-    X_QUERY_USER_TWEETS: str = ""
-    X_QUERY_TWEET_DETAIL: str = ""
-    X_QUERY_SEARCH_TIMELINE: str = ""
-    X_API_FEATURES_JSON: str = (
-        '{"rweb_tipjar_consumption_enabled":true,'
-        '"responsive_web_graphql_exclude_directive_enabled":true,'
-        '"verified_phone_label_enabled":false,'
-        '"creator_subscriptions_tweet_preview_api_enabled":true,'
-        '"responsive_web_graphql_timeline_navigation_enabled":true,'
-        '"responsive_web_enhance_cards_enabled":false}'
-    )
+    # Twitter MCP proxy (twitter-automation service)
+    TWITTER_MCP_URL: str = "http://twitter-automation:8010/mcp/twitter"
+    TWITTER_MCP_TIMEOUT_SEC: int = 60
+    TWITTER_MCP_RETRIES: int = 2
+    TWITTER_MCP_HEALTH_PATH: str = "/health"
 
 
 settings = Settings()

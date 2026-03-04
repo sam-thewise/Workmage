@@ -1,55 +1,38 @@
-"""Twitter/X MCP endpoint backed by internal TwitterSourceService."""
+"""Twitter/X MCP endpoint proxied to twitter-automation service."""
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
+import httpx
 
-from app.services.twitter_source import (
-    TwitterConfigurationError,
-    TwitterSourceError,
-    TwitterUpstreamError,
-    get_twitter_source_service,
-)
+from app.core.config import settings
 
 router = APIRouter(prefix="/mcp/twitter", tags=["mcp-twitter"])
+logger = logging.getLogger(__name__)
 
-TOOLS_LIST: list[dict[str, Any]] = [
+DEFAULT_TOOLS_LIST: list[dict[str, Any]] = [
     {
         "name": "fetch_x_profile_timeline",
-        "description": "Fetch recent posts from an X profile by handle.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "handle": {"type": "string", "description": "X handle (with or without @)."},
-                "limit": {"type": "integer", "description": "Maximum posts to return (1-50). Default 10."},
-            },
-            "required": ["handle"],
-        },
+        "description": "Fetch recent posts from an X profile by handle. Default limit=10; use up to 20 for personality. Higher limits use more API quota.",
+        "inputSchema": {"type": "object", "properties": {"handle": {"type": "string"}, "limit": {"type": "integer", "description": "Posts to fetch (default 10, max 20)."}}, "required": ["handle"]},
     },
     {
         "name": "fetch_x_post",
         "description": "Fetch a single X post by URL or post id.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "url_or_id": {"type": "string", "description": "Full x.com status URL or numeric post id."},
-            },
-            "required": ["url_or_id"],
-        },
+        "inputSchema": {"type": "object", "properties": {"url_or_id": {"type": "string"}}, "required": ["url_or_id"]},
     },
     {
         "name": "search_x_posts",
-        "description": "Search latest X posts by query.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query."},
-                "limit": {"type": "integer", "description": "Maximum posts to return (1-50). Default 10."},
-            },
-            "required": ["query"],
-        },
+        "description": "Search latest X posts by query. Default limit=10, max 20 to conserve API quota.",
+        "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "description": "Posts to return (default 10, max 20)."}}, "required": ["query"]},
+    },
+    {
+        "name": "check_x_sessions",
+        "description": "Check Twitter API connectivity and status.",
+        "inputSchema": {"type": "object", "properties": {}},
     },
 ]
 
@@ -62,36 +45,44 @@ def _error_text(message: str) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Twitter source error: {message}"}]}
 
 
-def _handle_tools_list() -> dict[str, Any]:
-    return {"tools": TOOLS_LIST}
+def _proxy_jsonrpc(method: str, params: dict[str, Any], req_id: Any) -> dict[str, Any]:
+    body = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
+    last_error: Exception | None = None
+    for attempt in range(1, max(1, settings.TWITTER_MCP_RETRIES) + 1):
+        try:
+            logger.info("twitter_mcp_proxy method=%s attempt=%s", method, attempt)
+            with httpx.Client(timeout=settings.TWITTER_MCP_TIMEOUT_SEC) as client:
+                resp = client.post(settings.TWITTER_MCP_URL, json=body)
+            resp.raise_for_status()
+            payload = resp.json()
+            if isinstance(payload, dict) and isinstance(payload.get("result"), dict):
+                return payload["result"]
+            if isinstance(payload, dict) and payload.get("error"):
+                return _error_text(f"Upstream error: {payload['error']}")
+            return _error_text("Invalid upstream response shape.")
+        except Exception as exc:
+            last_error = exc
+            logger.warning("twitter_mcp_proxy_failure method=%s attempt=%s err=%s", method, attempt, type(exc).__name__)
+            if attempt >= max(1, settings.TWITTER_MCP_RETRIES):
+                break
+    return _error_text(f"Upstream MCP proxy failure: {last_error}")
 
 
-def _handle_tools_call(params: dict[str, Any]) -> dict[str, Any]:
-    name = params.get("name") or ""
-    args = params.get("arguments") or {}
-    service = get_twitter_source_service()
-    try:
-        if name == "fetch_x_profile_timeline":
-            handle = args.get("handle") or ""
-            limit = args.get("limit") or 10
-            return _ok_text(service.fetch_profile_timeline(handle=handle, limit=limit))
-        if name == "fetch_x_post":
-            url_or_id = args.get("url_or_id") or ""
-            return _ok_text(service.fetch_post(url_or_id=url_or_id))
-        if name == "search_x_posts":
-            query = args.get("query") or ""
-            limit = args.get("limit") or 10
-            return _ok_text(service.search_posts(query=query, limit=limit))
-        return _error_text(f"Unknown tool: {name}")
-    except (ValueError, TwitterConfigurationError) as exc:
-        return _error_text(str(exc))
-    except TwitterUpstreamError as exc:
-        status = f" (status {exc.status_code})" if exc.status_code else ""
-        return _error_text(f"{exc}{status}")
-    except TwitterSourceError as exc:
-        return _error_text(str(exc))
-    except Exception as exc:
-        return _error_text(f"Unexpected error: {exc}")
+def _handle_tools_list(req_id: Any) -> dict[str, Any]:
+    result = _proxy_jsonrpc("tools/list", {}, req_id)
+    if result.get("content"):
+        return {"tools": DEFAULT_TOOLS_LIST}
+    tools = result.get("tools")
+    if isinstance(tools, list) and tools:
+        return {"tools": tools}
+    return {"tools": DEFAULT_TOOLS_LIST}
+
+
+def _handle_tools_call(params: dict[str, Any], req_id: Any) -> dict[str, Any]:
+    result = _proxy_jsonrpc("tools/call", params, req_id)
+    if result.get("content"):
+        return result
+    return _ok_text({"error": "Upstream tools/call returned no content."})
 
 
 @router.post("")
@@ -110,9 +101,9 @@ async def mcp_twitter_jsonrpc(request: Request) -> Response:
     params = body.get("params") if isinstance(body, dict) else {}
 
     if method == "tools/list":
-        result = _handle_tools_list()
+        result = _handle_tools_list(req_id)
     elif method == "tools/call":
-        result = _handle_tools_call(params)
+        result = _handle_tools_call(params, req_id)
     else:
         return Response(
             content=json.dumps(

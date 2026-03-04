@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
+
+logger = logging.getLogger(__name__)
 
 GITHUB_API_BASE = "https://api.github.com"
 DEFAULT_TIMEOUT = 15
@@ -28,17 +31,44 @@ def _get_token(request: Request) -> str | None:
     return request.headers.get("X-GitHub-Token") or None
 
 
-def _github_request(token: str, path: str, method: str = "GET") -> dict[str, Any] | list[Any]:
-    """Call GitHub REST API; path is e.g. /repos/owner/repo/commits."""
+def _token_preview(token: str) -> str:
+    """First 7 chars + … for verification (e.g. ghp_abc…). Safe to log."""
+    if not token or not token.strip():
+        return "(empty)"
+    t = token.strip()
+    return t[:7] + "…" if len(t) >= 7 else t[:2] + "…"
+
+
+def _request_summary_for_debug(method: str, path: str, token: str) -> str:
+    """Full request line (token redacted) so it appears in tool_result / worker logs."""
     url = GITHUB_API_BASE + path if path.startswith("/") else GITHUB_API_BASE + "/" + path
-    req = urllib.request.Request(
+    headers_safe = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {_token_preview(token)}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    return f" Request: {method} {url} | Headers: {json.dumps(headers_safe)}"
+
+
+def _github_request(token: str, path: str, method: str = "GET") -> dict[str, Any] | list[Any]:
+    """Call GitHub REST API; path is e.g. /repos/owner/repo/commits.
+    Use same headers as GitHub docs / working curl: Bearer auth, application/vnd.github+json, Api-Version.
+    """
+    url = GITHUB_API_BASE + path if path.startswith("/") else GITHUB_API_BASE + "/" + path
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    # Log full request with token redacted (4 chars) for debugging
+    headers_safe = {k: f"Bearer {_token_preview(token)}" if k == "Authorization" else v for k, v in headers.items()}
+    logger.info(
+        "github_request method=%s url=%s headers=%s",
+        method,
         url,
-        method=method,
-        headers={
-            "Accept": "application/vnd.github.v3+json",
-            "Authorization": f"token {token}",
-        },
+        json.dumps(headers_safe, sort_keys=True),
     )
+    req = urllib.request.Request(url, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=DEFAULT_TIMEOUT) as resp:
         raw = resp.read().decode("utf-8")
         return json.loads(raw) if raw else {}
@@ -46,19 +76,30 @@ def _github_request(token: str, path: str, method: str = "GET") -> dict[str, Any
 
 # --- MCP tool definitions ---
 
+def _parse_owner_repo(args: dict[str, Any], owner_key: str = "owner", repo_key: str = "repo") -> tuple[str, str]:
+    """Get owner and repo from args. Accepts owner/repo in repo (e.g. username/Workmage) if owner missing."""
+    owner = (args.get(owner_key) or "").strip()
+    repo = (args.get(repo_key) or "").strip()
+    # Allow "owner/repo" in repo when owner is missing (e.g. "username/Workmage")
+    if repo and "/" in repo and not owner:
+        parts = repo.split("/", 1)
+        owner, repo = (parts[0].strip(), parts[1].strip()) if len(parts) == 2 else (owner, repo)
+    return owner, repo
+
+
 TOOLS_LIST: list[dict[str, Any]] = [
     {
         "name": "list_commits",
-        "description": "List commits for a repository. Returns commit sha, message, author, date for each.",
+        "description": "List commits for a repository. Returns commit sha, message, author, date for each. Pass owner and repo separately, or repo as 'owner/repo' (e.g. username/Workmage).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "owner": {"type": "string", "description": "Repository owner (user or org)."},
-                "repo": {"type": "string", "description": "Repository name."},
+                "repo": {"type": "string", "description": "Repository name, or 'owner/repo' (e.g. username/Workmage)."},
                 "branch": {"type": "string", "description": "Branch name (e.g. main). Default: default branch."},
                 "per_page": {"type": "integer", "description": "Number of commits to return (max 100). Default 10."},
             },
-            "required": ["owner", "repo"],
+            "required": ["repo"],
         },
     },
     {
@@ -72,7 +113,7 @@ TOOLS_LIST: list[dict[str, Any]] = [
                 "ref": {"type": "string", "description": "Commit SHA or branch/tag name."},
                 "include_patch": {"type": "boolean", "description": "Include truncated patch/diff. Default false."},
             },
-            "required": ["owner", "repo", "ref"],
+            "required": ["repo", "ref"],
         },
     },
     {
@@ -87,19 +128,18 @@ TOOLS_LIST: list[dict[str, Any]] = [
                 "ref": {"type": "string", "description": "Branch, tag, or commit SHA. Default: default branch."},
                 "max_length": {"type": "integer", "description": "Max characters to return. Omit for full file."},
             },
-            "required": ["owner", "repo", "path"],
+            "required": ["repo", "path"],
         },
     },
 ]
 
 
 def _handle_list_commits(token: str, args: dict[str, Any]) -> str:
-    owner = (args.get("owner") or "").strip()
-    repo = (args.get("repo") or "").strip()
+    owner, repo = _parse_owner_repo(args)
     branch = (args.get("branch") or "").strip()
     per_page = min(100, max(1, int(args.get("per_page") or 10)))
     if not owner or not repo:
-        return "owner and repo are required"
+        return "repo is required (e.g. 'owner/repo' like username/Workmage, or owner and repo separately)"
     path = f"/repos/{owner}/{repo}/commits?per_page={per_page}"
     if branch:
         path += f"&sha={urllib.parse.quote(branch)}"
@@ -109,9 +149,18 @@ def _handle_list_commits(token: str, args: dict[str, Any]) -> str:
         body = e.read().decode("utf-8") if e.fp else ""
         try:
             err = json.loads(body)
-            return f"GitHub API error: {err.get('message', body)}"
+            msg = err.get("message", body)
         except Exception:
-            return f"GitHub API error: {e.code} {body}"
+            msg = body
+        if e.code == 404:
+            return (
+                f"GitHub API 404: {msg}. Token sent (preview: {_token_preview(token)}). "
+                "For private repos: (1) Use a classic PAT with 'repo' scope, or (2) For fine-grained PATs, add this repository and grant Contents read. "
+                "Check owner/repo spelling and case (e.g. username/Workmage)."
+                + "\n"
+                + _request_summary_for_debug("GET", path, token)
+            )
+        return f"GitHub API error: {msg}"
     except Exception as e:
         return f"Request failed: {e}"
     if not isinstance(data, list):
@@ -128,12 +177,13 @@ def _handle_list_commits(token: str, args: dict[str, Any]) -> str:
 
 
 def _handle_get_commit(token: str, args: dict[str, Any]) -> str:
-    owner = (args.get("owner") or "").strip()
-    repo = (args.get("repo") or "").strip()
+    owner, repo = _parse_owner_repo(args)
     ref = (args.get("ref") or "").strip()
     include_patch = bool(args.get("include_patch"))
-    if not owner or not repo or not ref:
-        return "owner, repo, and ref are required"
+    if not owner or not repo:
+        return "repo is required (e.g. 'owner/repo' or owner and repo separately)"
+    if not ref:
+        return "ref is required (commit SHA or branch name)"
     path = f"/repos/{owner}/{repo}/commits/{urllib.parse.quote(ref)}"
     try:
         data = _github_request(token, path)
@@ -141,9 +191,17 @@ def _handle_get_commit(token: str, args: dict[str, Any]) -> str:
         body = e.read().decode("utf-8") if e.fp else ""
         try:
             err = json.loads(body)
-            return f"GitHub API error: {err.get('message', body)}"
+            msg = err.get("message", body)
         except Exception:
-            return f"GitHub API error: {e.code} {body}"
+            msg = body
+        if e.code == 404:
+            return (
+                f"GitHub API 404: {msg}. Token sent (preview: {_token_preview(token)}). "
+                "For private repos, ensure your token has repo access and owner/repo/ref are correct."
+                + "\n"
+                + _request_summary_for_debug("GET", path, token)
+            )
+        return f"GitHub API error: {msg}"
     except Exception as e:
         return f"Request failed: {e}"
     if not isinstance(data, dict):
@@ -168,8 +226,7 @@ def _handle_get_commit(token: str, args: dict[str, Any]) -> str:
 
 
 def _handle_get_file_contents(token: str, args: dict[str, Any]) -> str:
-    owner = (args.get("owner") or "").strip()
-    repo = (args.get("repo") or "").strip()
+    owner, repo = _parse_owner_repo(args)
     path_arg = (args.get("path") or "").strip()
     ref = (args.get("ref") or "").strip()
     max_length = args.get("max_length")
@@ -177,8 +234,10 @@ def _handle_get_file_contents(token: str, args: dict[str, Any]) -> str:
         max_length = max(0, int(max_length)) or MAX_FILE_LENGTH
     else:
         max_length = MAX_FILE_LENGTH
-    if not owner or not repo or not path_arg:
-        return "owner, repo, and path are required"
+    if not owner or not repo:
+        return "repo is required (e.g. 'owner/repo' or owner and repo separately)"
+    if not path_arg:
+        return "path is required (e.g. README.md)"
     path = f"/repos/{owner}/{repo}/contents/{urllib.parse.quote(path_arg)}"
     if ref:
         path += f"?ref={urllib.parse.quote(ref)}"
@@ -188,9 +247,17 @@ def _handle_get_file_contents(token: str, args: dict[str, Any]) -> str:
         body = e.read().decode("utf-8") if e.fp else ""
         try:
             err = json.loads(body)
-            return f"GitHub API error: {err.get('message', body)}"
+            msg = err.get("message", body)
         except Exception:
-            return f"GitHub API error: {e.code} {body}"
+            msg = body
+        if e.code == 404:
+            return (
+                f"GitHub API 404: {msg}. Token sent (preview: {_token_preview(token)}). "
+                "For private repos, ensure your token has repo access and owner/repo/path are correct."
+                + "\n"
+                + _request_summary_for_debug("GET", path, token)
+            )
+        return f"GitHub API error: {msg}"
     except Exception as e:
         return f"Request failed: {e}"
     if not isinstance(data, dict):
@@ -218,7 +285,7 @@ def _handle_tools_list() -> dict[str, Any]:
 
 def _handle_tools_call(token: str | None, params: dict[str, Any]) -> dict[str, Any]:
     if not token:
-        return {"content": [{"type": "text", "text": "GitHub token required. Set Authorization: token <token> or X-GitHub-Token header."}]}
+        return {"content": [{"type": "text", "text": "GitHub token required. Token preview: (none). Add your GitHub token in app settings (e.g. Users → GitHub token). Private repos need a token with repo access."}]}
     name = params.get("name") or ""
     args = params.get("arguments") or {}
     if name == "list_commits":

@@ -55,7 +55,7 @@ The API now provides a dedicated MCP endpoint at `/api/v1/mcp/twitter` with tool
 - `fetch_x_post(url_or_id)`
 - `search_x_posts(query, limit)`
 
-This endpoint uses backend cookie sessions (JSONL file) and returns normalized post data as JSON text. Configure with env vars such as `X_SOURCE_ENABLED=true`, `X_SESSIONS_FILE`, and the `X_QUERY_*` GraphQL query IDs.
+This endpoint is backed by the twitter-automation service. Configure the proxy endpoint (`TWITTER_MCP_URL`) and scraper account env vars (`TWITTER_AUTOMATION_*`) in your root `.env`.
 
 ### Web scraping tool (token-efficient markdown)
 

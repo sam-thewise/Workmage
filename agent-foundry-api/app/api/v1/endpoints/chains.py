@@ -469,22 +469,22 @@ async def run_chain(
         personality_text = profile.profile_text.strip()
 
     github_token = None
+    gh_result = await db.execute(
+        select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+    )
+    gh_row = gh_result.scalar_one_or_none()
+    if gh_row:
+        github_token = decrypt_api_key(gh_row.encrypted_token)
     defn = chain.definition or {}
     agent_ids = {n.get("agent_id") for n in defn.get("nodes", []) if n.get("agent_id") is not None}
-    if agent_ids:
+    if agent_ids and not github_token:
         agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
         agents_list = agents_result.scalars().all()
         if any(manifest_has_github_module(a.manifest or {}) for a in agents_list):
-            gh_result = await db.execute(
-                select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+            raise HTTPException(
+                400,
+                "This chain uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
             )
-            gh_row = gh_result.scalar_one_or_none()
-            if not gh_row:
-                raise HTTPException(
-                    400,
-                    "This chain uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
-                )
-            github_token = decrypt_api_key(gh_row.encrypted_token)
 
     from app.worker.tasks import run_chain_task
 
