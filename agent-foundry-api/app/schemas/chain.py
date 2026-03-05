@@ -5,17 +5,19 @@ from pydantic import BaseModel, Field
 
 
 class ChainNode(BaseModel):
-    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug."""
+    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug; approval nodes have type='approval'."""
     id: str
-    agent_id: int | None = None  # None for slug nodes
+    agent_id: int | None = None  # None for slug and approval nodes
     position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
     role: str | None = None
-    type: str | None = None  # "slug" for slug nodes
+    type: str | None = None  # "slug" | "approval" | None (agent)
     slug: str | None = None
     content: str | None = None  # optional fixed content for slug nodes ("set slug content")
     lane: str | None = None  # "setup" | "main"
     save_to_slug: str | None = None  # for setup-lane agent nodes
     input_from_slug: str | None = None  # prefill agent input from saved output (optional)
+    title: str | None = None  # for approval nodes: optional title shown with the result
+    message: str | None = None  # for approval nodes: optional message shown with the result
 
 
 class ChainEdge(BaseModel):

@@ -12,6 +12,8 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.purchase import Purchase
+    from app.models.chain_approval import ChainApprovalRequest
+    from app.models.chain_run import ChainRun
 
 
 class ChainStatus(str, enum.Enum):
@@ -60,4 +62,10 @@ class AgentChain(Base):
     )
     purchases: Mapped[list["Purchase"]] = relationship(
         "Purchase", back_populates="chain"
+    )
+    approval_requests: Mapped[list["ChainApprovalRequest"]] = relationship(
+        "ChainApprovalRequest", back_populates="chain"
+    )
+    runs: Mapped[list["ChainRun"]] = relationship(
+        "ChainRun", back_populates="chain"
     )

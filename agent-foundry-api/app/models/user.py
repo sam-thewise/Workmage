@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from app.models.subscription import Subscription
     from app.models.user_llm_key import UserLLMKey
     from app.models.user_github_token import UserGitHubToken
+    from app.models.chain_run import ChainRun
 
 
 class UserRole(str, enum.Enum):
@@ -127,6 +128,10 @@ class User(Base):
     # Saved outputs (slug -> content) for chain reuse
     saved_outputs: Mapped[list["SavedOutput"]] = relationship(
         "SavedOutput", back_populates="user", foreign_keys="SavedOutput.user_id"
+    )
+    # Chain runs (persisted results and notifications)
+    chain_runs: Mapped[list["ChainRun"]] = relationship(
+        "ChainRun", back_populates="user", foreign_keys="ChainRun.user_id"
     )
 
 

@@ -9,6 +9,7 @@ const routes = [
   { path: '/agents/:id', component: () => import('@/views/AgentDetailView.vue'), name: 'agent-detail' },
   { path: '/purchase/success', component: () => import('@/views/PurchaseSuccessView.vue'), name: 'purchase-success' },
   { path: '/run/:id?', component: () => import('@/views/RunAgentView.vue'), name: 'run-agent', meta: { requiresAuth: true } },
+  { path: '/runs', component: () => import('@/views/RunHistoryView.vue'), name: 'runs', meta: { requiresAuth: true } },
   { path: '/chains', component: () => import('@/views/ChainsListView.vue'), name: 'chains', meta: { requiresAuth: true } },
   { path: '/chains/new', component: () => import('@/views/ChainBuilderView.vue'), name: 'chain-new', meta: { requiresAuth: true } },
   { path: '/chains/:id/edit', component: () => import('@/views/ChainBuilderView.vue'), name: 'chain-edit', meta: { requiresAuth: true } },

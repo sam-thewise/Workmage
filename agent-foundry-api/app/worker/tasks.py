@@ -1,10 +1,21 @@
 """Celery tasks for agent execution."""
 import logging
 
+from celery import Task
 from app.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 PROMPT_DEBUG_LIMIT = 4000
+
+
+class ChainRunTask(Task):
+    """Base task that persists run failure to chain_runs when task raises."""
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        run_id = kwargs.get("run_id")
+        if run_id is not None:
+            _update_chain_run(run_id, "error", error=str(exc))
+        super().on_failure(exc, task_id, args, kwargs, einfo)
 
 
 def _truncate_debug(value: str, limit: int = PROMPT_DEBUG_LIMIT) -> str:
@@ -81,6 +92,41 @@ def process_mint_payments_for_network(self, network: str = "avalanche") -> dict:
     return _process(network)
 
 
+def _update_chain_run(
+    run_id: int | None,
+    status: str,
+    content: str | None = None,
+    error: str | None = None,
+    usage: dict | None = None,
+    approval_id: int | None = None,
+    summary: str | None = None,
+) -> None:
+    """Persist chain run outcome so the run is never stuck in queued/resuming."""
+    if run_id is None:
+        return
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings
+    from app.models.chain_run import ChainRun
+    engine = create_engine(settings.DATABASE_SYNC_URL)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    with Session() as db:
+        run = db.execute(select(ChainRun).where(ChainRun.id == run_id)).scalar_one_or_none()
+        if run:
+            run.status = status
+            if content is not None:
+                run.content = content
+            if error is not None:
+                run.error = error
+            if usage is not None:
+                run.usage = usage
+            if approval_id is not None:
+                run.approval_id = approval_id
+            if summary is not None:
+                run.summary = summary
+            db.commit()
+
+
 def _topological_order(nodes: list[dict], edges: list[dict]) -> list[str]:
     """Return node IDs in topological order. Entry nodes first."""
     node_ids = {n["id"] for n in nodes if n.get("id")}
@@ -120,7 +166,7 @@ def _get_saved_content(db, user_id: int, slug: str) -> str:
     return ""
 
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, base=ChainRunTask)
 def run_chain_task(
     self,
     chain_id: int,
@@ -132,6 +178,7 @@ def run_chain_task(
     run_type: str | None = None,
     run_owner_id: int | None = None,
     github_token: str | None = None,
+    run_id: int | None = None,
 ) -> dict:
     """Execute chain: run_type='setup' runs only setup-lane nodes and saves to slugs; else runs main lane (slug nodes contribute saved content)."""
     from sqlalchemy import create_engine, select
@@ -148,6 +195,7 @@ def run_chain_task(
         chain_result = db.execute(select(AgentChain).where(AgentChain.id == chain_id))
         chain = chain_result.scalar_one_or_none()
     if not chain:
+        _update_chain_run(run_id, "error", error="Chain not found")
         return {"status": "error", "content": "Chain not found"}
 
     defn = chain.definition
@@ -157,6 +205,7 @@ def run_chain_task(
     if run_type == "setup":
         setup_node_ids = {nid for nid, n in all_nodes.items() if n.get("lane") == "setup"}
         if not setup_node_ids:
+            _update_chain_run(run_id, "completed", content="No setup nodes in this chain.", usage={})
             return {"status": "completed", "content": "No setup nodes in this chain.", "usage": {}}
         # Allow slug feeders into setup nodes even if the slug node is on main lane.
         feeder_slug_ids = {
@@ -243,9 +292,10 @@ def run_chain_task(
                 agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
                 agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
             if isinstance(content, str) and any(
-                x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:")
+                x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
             ):
-                return {"status": "completed", "content": content, "usage": agg_usage}
+                _update_chain_run(run_id, "error", error=content, usage=agg_usage)
+                return {"status": "error", "content": content, "usage": agg_usage}
             outputs[nid] = content or ""
             if run_owner and (content or "").strip():
                 with Session() as db:
@@ -258,13 +308,16 @@ def run_chain_task(
                     else:
                         db.add(SavedOutput(user_id=run_owner, slug=save_slug, content=(content or "").strip()))
                     db.commit()
+        _update_chain_run(run_id, "completed", content=f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", usage=agg_usage)
         return {"status": "completed", "content": f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", "usage": agg_usage}
 
     main_node_ids = {
         nid for nid, n in all_nodes.items()
-        if n.get("lane") != "setup" and (n.get("type") == "slug" or n.get("agent_id") is not None)
+        if n.get("lane") != "setup"
+        and (n.get("type") == "slug" or n.get("type") == "approval" or n.get("agent_id") is not None)
     }
     if not main_node_ids:
+        _update_chain_run(run_id, "completed", content="No main-lane nodes. Add agents or slug nodes to the main lane, or run setup first.", usage={})
         return {"status": "completed", "content": "No main-lane nodes. Add agents or slug nodes to the main lane, or run setup first.", "usage": {}}
     main_nodes = {nid: all_nodes[nid] for nid in main_node_ids}
     main_edges = [e for e in edges if e.get("source") in main_node_ids and e.get("target") in main_node_ids]
@@ -302,12 +355,80 @@ def run_chain_task(
                 else:
                     outputs[nid] = ""
             continue
+        if node.get("type") == "approval":
+            preds = incoming.get(nid, [])
+            summary_parts = []
+            title = (node.get("title") or "").strip()
+            if title:
+                summary_parts.append(f"# {title}\n")
+            msg = (node.get("message") or "").strip()
+            if msg:
+                summary_parts.append(f"{msg}\n")
+            for p in preds:
+                if p not in outputs:
+                    continue
+                pred_node = main_nodes.get(p)
+                if pred_node and pred_node.get("type") == "slug":
+                    label = f"Slug: {pred_node.get('slug', p)}"
+                elif pred_node and pred_node.get("agent_id") is not None:
+                    pred_agent_id = pred_node["agent_id"]
+                    label = agent_labels_by_id.get(pred_agent_id, f"Agent #{pred_agent_id}")
+                else:
+                    label = f"Output {len(summary_parts) + 1}"
+                content = (outputs.get(p) or "").strip()
+                summary_parts.append(f"## {label}\n\n{content}\n")
+            summary = "\n".join(summary_parts) if summary_parts else "No predecessor output."
+            next_stages = []
+            for e in main_edges:
+                if e.get("source") != nid:
+                    continue
+                tgt = e.get("target")
+                if tgt not in main_nodes:
+                    continue
+                tgt_node = main_nodes[tgt]
+                if tgt_node.get("type") == "slug":
+                    label = f"Slug: {tgt_node.get('slug', tgt)}"
+                elif tgt_node.get("agent_id") is not None:
+                    label = agent_labels_by_id.get(tgt_node["agent_id"], f"Agent #{tgt_node['agent_id']}")
+                else:
+                    label = tgt
+                next_stages.append({"node_id": tgt, "label": label})
+            state_snapshot = {
+                "main_nodes": main_nodes,
+                "main_edges": main_edges,
+                "order": order,
+                "run_owner_id": run_owner,
+                "personality_text": personality_text,
+            }
+            with Session() as db:
+                from app.models.chain_approval import ChainApprovalRequest
+                approval = ChainApprovalRequest(
+                    chain_id=chain_id,
+                    user_id=run_owner or 0,
+                    outputs=outputs,
+                    approval_node_id=nid,
+                    state_snapshot=state_snapshot,
+                    status="pending",
+                )
+                db.add(approval)
+                db.commit()
+                db.refresh(approval)
+                approval_id = approval.id
+            _update_chain_run(run_id, "awaiting_approval", approval_id=approval_id, summary=summary, usage=agg_usage)
+            return {
+                "status": "awaiting_approval",
+                "approval_id": approval_id,
+                "summary": summary,
+                "next_stages": next_stages,
+                "usage": agg_usage,
+            }
         agent_id = node.get("agent_id")
         if agent_id is None:
             continue
         with Session() as db:
             agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
         if not agent:
+            _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found")
             return {"status": "error", "content": f"Agent {agent_id} not found"}
         preds = incoming.get(nid, [])
         user_input_val = user_input if not preds else ""
@@ -362,9 +483,10 @@ def run_chain_task(
             agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
             agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
         if isinstance(content, str) and any(
-            x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:")
+            x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
         ):
-            return {"status": "completed", "content": content, "usage": agg_usage}
+            _update_chain_run(run_id, "error", error=content, usage=agg_usage)
+            return {"status": "error", "content": content, "usage": agg_usage}
         outputs[nid] = content or ""
 
     sink_nodes = [nid for nid in main_nodes if not any(e.get("source") == nid for e in main_edges)]
@@ -375,7 +497,194 @@ def run_chain_task(
             if sub:
                 sub.runs_used += 1
                 db.commit()
+    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
     return {"status": "completed", "content": final_content, "usage": agg_usage}
+
+
+@celery_app.task(bind=True, base=ChainRunTask)
+def resume_chain_task(
+    self,
+    approval_id: int,
+    user_input: str,
+    model: str,
+    api_key: str | None,
+    buyer_id: int | None = None,
+    personality_text: str | None = None,
+    github_token: str | None = None,
+    next_stage_node_id: str | None = None,
+    run_id: int | None = None,
+) -> dict:
+    """Resume chain from an approval node. Loads state from ChainApprovalRequest and runs remaining nodes."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings
+    from app.models.agent import Agent
+    from app.models.chain import AgentChain
+    from app.models.chain_approval import ChainApprovalRequest
+    from app.models.subscription import Subscription
+
+    engine = create_engine(settings.DATABASE_SYNC_URL)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    with Session() as db:
+        approval = db.execute(
+            select(ChainApprovalRequest).where(ChainApprovalRequest.id == approval_id)
+        ).scalar_one_or_none()
+    if not approval or approval.status != "pending":
+        _update_chain_run(run_id, "error", error="Approval not found or already decided")
+        return {"status": "error", "content": "Approval not found or already decided"}
+    outputs = dict(approval.outputs)
+    state = approval.state_snapshot or {}
+    main_nodes = state.get("main_nodes", {})
+    main_edges = state.get("main_edges", [])
+    order = state.get("order", [])
+    run_owner = state.get("run_owner_id")
+    personality_text = personality_text or state.get("personality_text") or ""
+    approval_node_id = approval.approval_node_id
+    if approval_node_id not in order:
+        _update_chain_run(run_id, "error", error="Invalid approval state: node not in order")
+        return {"status": "error", "content": "Invalid approval state: node not in order"}
+    idx = order.index(approval_node_id)
+    next_order = order[idx + 1:]
+    if not next_order:
+        _update_chain_run(run_id, "completed", content="", usage={})
+        return {"status": "completed", "content": "", "usage": {}}
+    if next_stage_node_id:
+        allowed = {next_stage_node_id}
+        for nid in next_order:
+            if _descendant_of(nid, next_stage_node_id, main_edges):
+                allowed.add(nid)
+        next_order = [nid for nid in next_order if nid in allowed]
+    incoming = {nid: [] for nid in main_nodes}
+    for e in main_edges:
+        tgt, src = e.get("target"), e.get("source")
+        if tgt and src:
+            incoming[tgt].append(src)
+    agent_ids_main = {n.get("agent_id") for n in main_nodes.values() if n.get("agent_id") is not None}
+    agent_labels_by_id = {}
+    if agent_ids_main:
+        with Session() as db:
+            agents_main = db.execute(select(Agent).where(Agent.id.in_(agent_ids_main))).scalars().all()
+            for a in agents_main:
+                agent_labels_by_id[a.id] = (a.manifest or {}).get("name") or f"Agent #{a.id}"
+    agg_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    for nid in next_order:
+        node = main_nodes.get(nid)
+        if not node:
+            continue
+        if node.get("type") == "slug":
+            set_content = (node.get("content") or "").strip()
+            if set_content:
+                outputs[nid] = set_content
+            else:
+                slug_name = node.get("slug") or ""
+                if run_owner and slug_name:
+                    with Session() as db:
+                        outputs[nid] = _get_saved_content(db, run_owner, slug_name)
+                else:
+                    outputs[nid] = ""
+            continue
+        if node.get("type") == "approval":
+            continue
+        agent_id = node.get("agent_id")
+        if agent_id is None:
+            continue
+        with Session() as db:
+            agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
+        if not agent:
+            _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found")
+            return {"status": "error", "content": f"Agent {agent_id} not found"}
+        preds = incoming.get(nid, [])
+        user_input_val = user_input if not preds else ""
+        input_parts = []
+        for p in preds:
+            if p not in outputs:
+                continue
+            pred_node = main_nodes.get(p)
+            if pred_node and pred_node.get("type") == "slug":
+                label = f"Slug: {pred_node.get('slug', p)}"
+            elif pred_node and pred_node.get("agent_id") is not None:
+                pred_agent_id = pred_node["agent_id"]
+                label = f"Output: {agent_labels_by_id.get(pred_agent_id, f'Agent #{pred_agent_id}')}"
+            else:
+                label = f"Input from chain ({len(input_parts) + 1})"
+            content = (outputs[p] or "").strip()
+            input_parts.append({"content": content, "format": "text/plain", "label": label})
+        input_from_slug = (node.get("input_from_slug") or "").strip()
+        if input_from_slug and run_owner:
+            with Session() as db:
+                slug_content = _get_saved_content(db, run_owner, input_from_slug)
+            if (slug_content or "").strip():
+                input_parts.append({
+                    "content": slug_content.strip(),
+                    "format": "text/plain",
+                    "label": f"Slug: {input_from_slug}",
+                })
+        if personality_text and personality_text.strip():
+            input_parts.append({
+                "content": "User voice/beliefs (use for tone and stance in generated content):\n\n" + personality_text.strip(),
+                "format": "text/plain",
+                "label": "Personality / voice",
+            })
+        from app.worker.sandbox import run_agent_in_sandbox
+        content, usage = run_agent_in_sandbox(
+            manifest=agent.manifest,
+            user_input=user_input_val,
+            model=model,
+            api_key=api_key,
+            input_parts=input_parts if input_parts else None,
+            github_token=github_token,
+        )
+        if usage:
+            agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
+            agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
+        if isinstance(content, str) and any(
+            x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
+        ):
+            _update_chain_run(run_id, "error", error=content, usage=agg_usage)
+            return {"status": "error", "content": content, "usage": agg_usage}
+        outputs[nid] = content or ""
+    next_sink_nodes = [nid for nid in next_order if not any(e.get("source") == nid for e in main_edges)]
+    final_content = "\n\n---\n\n".join(outputs.get(nid, "") for nid in next_sink_nodes) if next_sink_nodes else "\n\n".join(outputs.get(nid, "") for nid in next_order if nid in outputs)
+    if buyer_id:
+        with Session() as db:
+            sub = db.execute(select(Subscription).where(Subscription.buyer_id == buyer_id)).scalar_one_or_none()
+            if sub:
+                sub.runs_used += 1
+                db.commit()
+    with Session() as db:
+        approval = db.execute(select(ChainApprovalRequest).where(ChainApprovalRequest.id == approval_id)).scalar_one_or_none()
+        if approval:
+            approval.status = "approved"
+            from datetime import datetime
+            approval.decided_at = datetime.utcnow()
+            approval.decided_by_user_id = run_owner
+            db.commit()
+    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
+    return {"status": "completed", "content": final_content, "usage": agg_usage}
+
+
+def _descendant_of(nid: str, ancestor: str, edges: list[dict]) -> bool:
+    """True if nid is a descendant of ancestor in the graph."""
+    if nid == ancestor:
+        return True
+    adj = {}
+    for e in edges:
+        src = e.get("source")
+        if src not in adj:
+            adj[src] = []
+        adj[src].append(e.get("target"))
+    from collections import deque
+    q = deque([ancestor])
+    seen = {ancestor}
+    while q:
+        u = q.popleft()
+        for v in adj.get(u, []):
+            if v == nid:
+                return True
+            if v not in seen:
+                seen.add(v)
+                q.append(v)
+    return False
 
 
 @celery_app.task(bind=True)

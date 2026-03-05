@@ -3,7 +3,8 @@ from uuid import uuid4
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_, select
+from pydantic import BaseModel
+from sqlalchemy import or_, select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,8 @@ from app.core.key_encryption import decrypt_api_key
 from app.db.session import get_db
 from app.models.agent import Agent, AgentStatus
 from app.models.chain import AgentChain, ChainStatus
+from app.models.chain_approval import ChainApprovalRequest
+from app.models.chain_run import ChainRun
 from app.models.purchase import Purchase
 from app.models.subscription import Subscription
 from app.models.user import User
@@ -24,9 +27,14 @@ from app.services.chain_compatibility import can_chain, validate_chain_definitio
 from app.services.manifest_validator import manifest_has_github_module
 
 router = APIRouter(prefix="/chains", tags=["chains"])
-CHAIN_JOB_STORE: dict[str, tuple[str, int]] = {}  # job_id -> (celery_task_id, buyer_id)
+CHAIN_JOB_STORE: dict[str, tuple[str, int, int | None]] = {}  # job_id -> (celery_task_id, user_id, run_id | None)
 
 GENERIC_ERROR = "Error communicating with server. Please try again later."
+
+
+class ChainApprovalApproveRequest(BaseModel):
+    approved: bool = True
+    next_stage_node_id: str | None = None
 
 
 def _sanitize_error(msg: str | None) -> str:
@@ -236,30 +244,191 @@ async def check_compatibility(
     return {"compatible": can_chain(a, b)}
 
 
+@router.get("/runs")
+async def list_chain_runs(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    chain_id: int | None = Query(None),
+    status: str | None = Query(None),
+    unread_only: bool = Query(False),
+):
+    """List current user's chain runs for notifications and run history. Optionally include unread count."""
+    q = select(ChainRun, AgentChain.name).where(ChainRun.user_id == user.id).join(
+        AgentChain, ChainRun.chain_id == AgentChain.id
+    )
+    if chain_id is not None:
+        q = q.where(ChainRun.chain_id == chain_id)
+    if status:
+        q = q.where(ChainRun.status == status)
+    if unread_only:
+        q = q.where(ChainRun.read_at.is_(None))
+    q = q.order_by(ChainRun.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(q)
+    rows = result.all()
+    count_q = select(func.count(ChainRun.id)).where(ChainRun.user_id == user.id, ChainRun.read_at.is_(None))
+    if chain_id is not None:
+        count_q = count_q.where(ChainRun.chain_id == chain_id)
+    if status:
+        count_q = count_q.where(ChainRun.status == status)
+    unread_total = (await db.execute(count_q)).scalar() or 0
+    items = [
+        {
+            "id": r[0].id,
+            "chain_id": r[0].chain_id,
+            "chain_name": r[1],
+            "status": r[0].status,
+            "created_at": r[0].created_at.isoformat() if r[0].created_at else None,
+            "read_at": r[0].read_at.isoformat() if r[0].read_at else None,
+            "approval_id": r[0].approval_id,
+        }
+        for r in rows
+    ]
+    return {"items": items, "unread_count": unread_total}
+
+
+@router.get("/runs/result/{run_id}")
+async def get_chain_run_result(
+    run_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single run by id (for viewing result or approval UI)."""
+    result = await db.execute(
+        select(ChainRun, AgentChain.name).where(
+            ChainRun.id == run_id,
+            ChainRun.user_id == user.id,
+        ).join(AgentChain, ChainRun.chain_id == AgentChain.id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "Run not found")
+    run, chain_name = row[0], row[1]
+    out = {
+        "id": run.id,
+        "chain_id": run.chain_id,
+        "chain_name": chain_name,
+        "status": run.status,
+        "content": run.content,
+        "error": run.error,
+        "usage": run.usage,
+        "approval_id": run.approval_id,
+        "summary": run.summary,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "read_at": run.read_at.isoformat() if run.read_at else None,
+    }
+    if run.status == "awaiting_approval":
+        approval = (
+            await db.execute(
+                select(ChainApprovalRequest).where(ChainApprovalRequest.id == run.approval_id)
+            )
+        ).scalar_one_or_none()
+        if approval and approval.state_snapshot:
+            main_edges = approval.state_snapshot.get("main_edges", [])
+            approval_node_id = approval.approval_node_id
+            main_nodes = approval.state_snapshot.get("main_nodes", {})
+            next_stages = []
+            for e in main_edges:
+                if e.get("source") != approval_node_id:
+                    continue
+                tgt = e.get("target")
+                if tgt in main_nodes:
+                    tn = main_nodes[tgt]
+                    if tn.get("type") == "slug":
+                        label = f"Slug: {tn.get('slug', tgt)}"
+                    else:
+                        label = tn.get("agent_id") and f"Agent #{tn['agent_id']}" or tgt
+                    next_stages.append({"node_id": tgt, "label": label})
+            out["next_stages"] = next_stages
+    return out
+
+
+@router.patch("/runs/{run_id}/read")
+async def mark_chain_run_read(
+    run_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a run as read (clears from unread notification count)."""
+    from datetime import datetime, timezone
+    result = await db.execute(
+        select(ChainRun).where(ChainRun.id == run_id, ChainRun.user_id == user.id)
+    )
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(404, "Run not found")
+    run.read_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"run_id": run_id, "read_at": run.read_at.isoformat()}
+
+
 @router.get("/runs/{job_id}")
-async def get_chain_run_status(job_id: str):
-    """Poll chain run status and result."""
+async def get_chain_run_status(
+    job_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Poll chain run status and result. Persists result to chain_runs when task finishes."""
     from app.worker.celery_app import celery_app
+    from datetime import datetime
 
     stored = CHAIN_JOB_STORE.get(job_id)
-    task_id = stored[0] if isinstance(stored, tuple) else stored
+    if isinstance(stored, tuple):
+        task_id, _user_id, run_id = stored[0], stored[1], stored[2] if len(stored) > 2 else None
+    else:
+        task_id, run_id = stored, None
     if not task_id:
         raise HTTPException(404, "Job not found")
     result = AsyncResult(task_id, app=celery_app)
     if result.state == "PENDING":
-        return {"job_id": job_id, "status": "pending"}
+        return {"job_id": job_id, "status": "pending", "run_id": run_id}
     if result.state == "SUCCESS":
         data = result.result or {}
+        if data.get("status") == "awaiting_approval":
+            approval_id = data.get("approval_id")
+            summary = data.get("summary", "")
+            next_stages = data.get("next_stages", [])
+            if run_id:
+                run_row = (await db.execute(select(ChainRun).where(ChainRun.id == run_id))).scalar_one_or_none()
+                if run_row and run_row.user_id == user.id:
+                    run_row.status = "awaiting_approval"
+                    run_row.approval_id = approval_id
+                    run_row.summary = summary
+                    await db.commit()
+            return {
+                "job_id": job_id,
+                "run_id": run_id,
+                "status": "awaiting_approval",
+                "approval_id": approval_id,
+                "summary": summary,
+                "next_stages": next_stages,
+                "usage": data.get("usage"),
+            }
         content = data.get("content")
         if content and any(
             x in (content or "")
             for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:")
         ):
             content = _sanitize_error(content) if content else content
-        return {"job_id": job_id, "status": "completed", "content": content, "usage": data.get("usage")}
+        if run_id:
+            run_row = (await db.execute(select(ChainRun).where(ChainRun.id == run_id))).scalar_one_or_none()
+            if run_row and run_row.user_id == user.id:
+                run_row.status = "completed"
+                run_row.content = content
+                run_row.usage = data.get("usage")
+                await db.commit()
+        return {"job_id": job_id, "run_id": run_id, "status": "completed", "content": content, "usage": data.get("usage")}
     if result.state == "FAILURE":
-        return {"job_id": job_id, "status": "error", "error": _sanitize_error(str(result.result))}
-    return {"job_id": job_id, "status": result.state.lower()}
+        err_msg = _sanitize_error(str(result.result))
+        if run_id:
+            run_row = (await db.execute(select(ChainRun).where(ChainRun.id == run_id))).scalar_one_or_none()
+            if run_row and run_row.user_id == user.id:
+                run_row.status = "error"
+                run_row.error = err_msg
+                await db.commit()
+        return {"job_id": job_id, "run_id": run_id, "status": "error", "error": err_msg}
+    return {"job_id": job_id, "run_id": run_id, "status": result.state.lower()}
 
 
 @router.get("/{chain_id}", response_model=ChainResponse)
@@ -488,6 +657,15 @@ async def run_chain(
 
     from app.worker.tasks import run_chain_task
 
+    run = ChainRun(
+        user_id=user.id,
+        chain_id=chain_id,
+        status="queued",
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
     job_id = str(uuid4())
     task = run_chain_task.delay(
         chain_id=chain_id,
@@ -499,6 +677,79 @@ async def run_chain(
         run_type=payload.run_type,
         run_owner_id=user.id,
         github_token=github_token,
+        run_id=run.id,
     )
-    CHAIN_JOB_STORE[job_id] = (task.id, user.id)
-    return {"job_id": job_id, "status": "queued"}
+    run.job_id = job_id
+    await db.commit()
+    CHAIN_JOB_STORE[job_id] = (task.id, user.id, run.id)
+    return {"job_id": job_id, "run_id": run.id, "status": "queued"}
+
+
+@router.post("/approvals/{approval_id}/approve")
+async def approve_chain_run(
+    approval_id: int,
+    payload: ChainApprovalApproveRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve or reject an approval request. On approve, enqueues resume task and returns new job_id for polling."""
+    approval = (
+        await db.execute(
+            select(ChainApprovalRequest).where(ChainApprovalRequest.id == approval_id)
+        )
+    ).scalar_one_or_none()
+    if not approval:
+        raise HTTPException(404, "Approval not found")
+    if approval.user_id != user.id:
+        raise HTTPException(403, "Only the run owner can approve or reject")
+    if approval.status != "pending":
+        raise HTTPException(400, "Approval already decided")
+    if not payload.approved:
+        approval.status = "rejected"
+        await db.commit()
+        return {"approved": False, "status": "rejected"}
+
+    api_key = None
+    profile_result = await db.execute(
+        select(UserPersonalityProfile).where(UserPersonalityProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    personality_text = (profile.profile_text or "").strip() if profile else ""
+    gh_result = await db.execute(
+        select(UserGitHubToken).where(UserGitHubToken.user_id == user.id)
+    )
+    gh_row = gh_result.scalar_one_or_none()
+    github_token = decrypt_api_key(gh_row.encrypted_token) if gh_row else None
+    key_result = await db.execute(
+        select(UserLLMKey).where(UserLLMKey.user_id == user.id, UserLLMKey.provider == "openai")
+    )
+    key_row = key_result.scalar_one_or_none()
+    if key_row:
+        api_key = decrypt_api_key(key_row.encrypted_key)
+
+    from app.worker.tasks import resume_chain_task
+    job_id = str(uuid4())
+    run_row = (
+        await db.execute(select(ChainRun).where(ChainRun.approval_id == approval_id))
+    ).scalar_one_or_none()
+    run_row_id = run_row.id if run_row else None
+    task = resume_chain_task.delay(
+        approval_id=approval_id,
+        user_input="",
+        model="openai/gpt-5.2",
+        api_key=api_key,
+        buyer_id=user.id,
+        personality_text=personality_text or None,
+        github_token=github_token,
+        next_stage_node_id=payload.next_stage_node_id,
+        run_id=run_row_id,
+    )
+    if run_row:
+        run_row.job_id = job_id
+        run_row.status = "resuming"
+        await db.commit()
+        run_id = run_row.id
+    else:
+        run_id = None
+    CHAIN_JOB_STORE[job_id] = (task.id, user.id, run_id)
+    return {"approved": True, "job_id": job_id, "run_id": run_id, "status": "resuming"}

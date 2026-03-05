@@ -62,6 +62,9 @@
             {{ s.slug }}
           </li>
         </ul>
+        <h3 class="mt-3">Approval</h3>
+        <p class="hint">Pause the chain for user review before continuing.</p>
+        <v-btn size="small" variant="tonal" color="primary" block class="mt-1" @click="addApprovalNode">Add approval node</v-btn>
       </div>
       <div v-if="selectedNode" class="node-options pa-3" style="background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border);">
         <h4 class="text-subtitle-2 mb-2">Node options</h4>
@@ -69,6 +72,10 @@
           <v-text-field v-model="selectedNode.data.slug" label="Slug name" density="compact" hide-details @update:model-value="touchNodes" />
           <v-textarea v-model="selectedNode.data.content" label="Set content (optional)" density="compact" hide-details placeholder="Fixed text for this slug; leave empty to use saved output" rows="3" class="mt-2" @update:model-value="touchNodes" />
           <p class="text-caption text-medium-emphasis mt-1">If set, this slug uses this text instead of saved output when the chain runs.</p>
+        </template>
+        <template v-else-if="selectedNode.type === 'approval'">
+          <v-text-field v-model="selectedNode.data.title" label="Title" density="compact" hide-details placeholder="e.g. Review & continue" @update:model-value="touchNodes" />
+          <v-textarea v-model="selectedNode.data.message" label="Message (optional)" density="compact" hide-details placeholder="Short note shown with the result" rows="2" class="mt-2" @update:model-value="touchNodes" />
         </template>
         <template v-else>
           <v-select v-model="selectedNode.data.lane" :items="laneOptions" item-title="title" item-value="value" label="Lane" density="compact" hide-details class="mb-2" @update:model-value="touchNodes" />
@@ -117,7 +124,18 @@
           <v-btn color="primary" variant="tonal" :loading="running" :disabled="running" @click="runChain(null)">Run main</v-btn>
           <v-btn color="primary" variant="flat" :loading="running" :disabled="running" @click="runChain('setup')">Run setup</v-btn>
         </div>
-        <v-card v-if="runResult" variant="tonal" class="pa-3 mt-4">
+        <template v-if="runResult?.awaiting_approval">
+          <v-card variant="tonal" class="pa-3 mt-4">
+            <p class="text-body-2 font-weight-medium mb-2">Review the result below, then approve to continue or reject.</p>
+            <pre class="text-body-2 ma-0 mb-3" style="white-space: pre-wrap; max-height: 280px; overflow-y: auto;">{{ runResult.summary || 'No summary' }}</pre>
+            <p v-if="runResult.next_stages?.length" class="text-caption mb-2">Next stage: {{ runResult.next_stages.map(s => s.label).join(', ') }}</p>
+            <div class="d-flex gap-2">
+              <v-btn color="primary" :loading="approving" :disabled="approving" @click="approveRun(true)">Approve & continue</v-btn>
+              <v-btn variant="outlined" :loading="approving" :disabled="approving" @click="approveRun(false)">Reject</v-btn>
+            </div>
+          </v-card>
+        </template>
+        <v-card v-else-if="runResult" variant="tonal" class="pa-3 mt-4">
           <pre class="text-body-2 ma-0" style="white-space: pre-wrap;">{{ runResult.content || runResult.error || 'No output' }}</pre>
         </v-card>
       </v-card>
@@ -133,6 +151,7 @@ import { Background } from '@vue-flow/background'
 import FlowControls from '@/components/FlowControls.vue'
 import AgentNode from '@/components/AgentNode.vue'
 import SlugNode from '@/components/SlugNode.vue'
+import ApprovalNode from '@/components/ApprovalNode.vue'
 import { useAuthStore } from '@/stores/auth'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -160,6 +179,7 @@ const runModel = ref('openai/gpt-5.2')
 const runByok = ref(false)
 const running = ref(false)
 const runResult = ref(null)
+const approving = ref(false)
 const runModelOptions = [
   { title: 'OpenAI GPT-5.2', value: 'openai/gpt-5.2' },
   { title: 'OpenAI GPT-5 mini', value: 'openai/gpt-5-mini' },
@@ -172,7 +192,7 @@ let pollInterval = null
 const compatibilityCache = ref({})
 const connectStartSource = ref(null)
 
-const nodeTypes = { agent: AgentNode, slug: SlugNode }
+const nodeTypes = { agent: AgentNode, slug: SlugNode, approval: ApprovalNode }
 const newSlugName = ref('')
 const savedSlugs = ref([])
 const laneOptions = [
@@ -246,6 +266,15 @@ async function loadChain() {
           position: n.position || { x: 0, y: 0 },
           data: { slug: n.slug || 'slug', content: n.content || '' },
           dragHandle: '.slug-node-content',
+        }
+      }
+      if (n.type === 'approval') {
+        return {
+          id: n.id,
+          type: 'approval',
+          position: n.position || { x: 0, y: 0 },
+          data: { title: n.title || 'Review & continue', message: n.message || '' },
+          dragHandle: '.approval-node-content',
         }
       }
       return {
@@ -333,6 +362,18 @@ function addSlugNodeByName(slugName) {
   }]
 }
 
+function addApprovalNode() {
+  const id = `n${++nodeIdCounter}`
+  const defaultPos = { x: 100 + nodes.value.length * 200, y: 150 }
+  nodes.value = [...nodes.value, {
+    id,
+    type: 'approval',
+    position: defaultPos,
+    data: { title: 'Review & continue', message: '' },
+    dragHandle: '.approval-node-content',
+  }]
+}
+
 function refreshEntryBadges() {
   const targetIds = new Set(edges.value.map(e => e.target))
   nodes.value = nodes.value.map(n => ({
@@ -387,6 +428,9 @@ function isValidConnection(params) {
   const tgtNode = nodes.value.find(n => n.id === params.target)
   if (!srcNode || !tgtNode) return false
   if (tgtNode.type === 'slug') return false
+  if (srcNode.type === 'approval' && tgtNode.type === 'approval') return false
+  if (srcNode.type === 'approval') return true
+  if (tgtNode.type === 'approval') return true
   if (srcNode.type === 'slug') return true
   if (!srcNode.data?.agent_id || !tgtNode.data?.agent_id) return false
   const key = `${srcNode.data.agent_id}-${tgtNode.data.agent_id}`
@@ -400,7 +444,9 @@ function onConnect(params) {
   const srcNode = nodes.value.find(n => n.id === params.source)
   const tgtNode = nodes.value.find(n => n.id === params.target)
   if (!srcNode || !tgtNode) return
-  if (srcNode.type !== 'slug' && tgtNode.type !== 'slug') {
+  if (srcNode.type === 'approval' || tgtNode.type === 'approval') {
+    // no compatibility check for approval nodes
+  } else if (srcNode.type !== 'slug' && tgtNode.type !== 'slug') {
   const key = `${srcNode.data?.agent_id}-${tgtNode.data?.agent_id}`
   if (compatibilityCache.value[key] === false) {
     setTimeout(() => {
@@ -435,6 +481,15 @@ function buildDefinition() {
           content: (n.data?.content || '').trim() || undefined,
           position: n.position,
           lane: 'main',
+        }
+      }
+      if (n.type === 'approval') {
+        return {
+          id: n.id,
+          type: 'approval',
+          position: n.position,
+          title: (n.data?.title || '').trim() || undefined,
+          message: (n.data?.message || '').trim() || undefined,
         }
       }
       return {
@@ -546,12 +601,44 @@ async function pollRun(jobId) {
       pollInterval = null
       runResult.value = { error: data.error || 'Run failed' }
       running.value = false
+    } else if (data.status === 'awaiting_approval') {
+      clearInterval(pollInterval)
+      pollInterval = null
+      runResult.value = {
+        awaiting_approval: true,
+        approval_id: data.approval_id,
+        summary: data.summary,
+        next_stages: data.next_stages || [],
+      }
+      running.value = false
     }
   } catch (e) {
     clearInterval(pollInterval)
     pollInterval = null
     runResult.value = { error: 'Failed to get result' }
     running.value = false
+  }
+}
+
+async function approveRun(approved) {
+  if (!runResult.value?.awaiting_approval || !runResult.value.approval_id) return
+  approving.value = true
+  try {
+    const { data } = await api.post(`/chains/approvals/${runResult.value.approval_id}/approve`, {
+      approved,
+      next_stage_node_id: null,
+    })
+    if (approved && data.job_id) {
+      runResult.value = null
+      running.value = true
+      pollInterval = setInterval(() => pollRun(data.job_id), 1500)
+    } else {
+      runResult.value = { content: approved ? 'Resumed.' : 'Rejected.' }
+    }
+  } catch (e) {
+    runResult.value = { error: e.response?.data?.detail?.message || e.response?.data?.detail || 'Approval failed' }
+  } finally {
+    approving.value = false
   }
 }
 

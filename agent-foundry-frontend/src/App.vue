@@ -17,7 +17,43 @@
         <v-btn v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'moderator'" variant="text" color="on-surface" to="/admin">Admin</v-btn>
         <v-btn variant="text" color="on-surface" to="/dashboard">Dashboard</v-btn>
         <v-btn variant="text" color="on-surface" to="/run">Run Agent</v-btn>
+        <v-btn variant="text" color="on-surface" to="/runs">Run history</v-btn>
         <v-btn variant="text" color="on-surface" to="/settings/keys">API Keys</v-btn>
+        <v-menu location="bottom end" :close-on-content-click="false" max-width="360">
+          <template #activator="{ props: menuProps }">
+            <v-badge :content="notificationCount" :model-value="notificationCount > 0" color="error" overlap>
+              <v-btn v-bind="menuProps" icon variant="text" color="on-surface" aria-label="Notifications">
+                <v-icon>mdi-bell</v-icon>
+              </v-btn>
+            </v-badge>
+          </template>
+          <v-card min-width="320">
+            <v-card-title class="d-flex align-center justify-space-between">
+              <span>Notifications</span>
+              <v-btn variant="text" size="small" to="/runs">View all</v-btn>
+            </v-card-title>
+            <v-divider />
+            <v-list v-if="notificationItems.length" density="compact">
+              <v-list-item
+                v-for="item in notificationItems"
+                :key="item.id"
+                :to="'/runs?open=' + item.id"
+                :subtitle="item.status === 'awaiting_approval' ? 'Needs your approval' : item.status === 'completed' ? 'Finished' : item.status === 'error' ? 'Failed' : item.status"
+                @click="fetchNotifications"
+              >
+                <template #title>{{ item.chain_name || 'Chain' }}</template>
+                <template #prepend>
+                  <v-icon :color="item.status === 'awaiting_approval' ? 'warning' : item.status === 'completed' ? 'success' : item.status === 'error' ? 'error' : 'default'">
+                    {{ item.status === 'awaiting_approval' ? 'mdi-hand-back-right' : item.status === 'completed' ? 'mdi-check-circle' : item.status === 'error' ? 'mdi-alert-circle' : 'mdi-information' }}
+                  </v-icon>
+                </template>
+              </v-list-item>
+            </v-list>
+            <v-list v-else>
+              <v-list-item title="No new notifications" />
+            </v-list>
+          </v-card>
+        </v-menu>
         <v-btn variant="flat" color="primary" @click="authStore.logout" class="ml-2">Logout</v-btn>
       </template>
       <template v-else>
@@ -34,11 +70,37 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/services/api'
+
 const authStore = useAuthStore()
+const notificationCount = ref(0)
+const notificationItems = ref([])
+let notificationPollTimer = null
+
+async function fetchNotifications() {
+  if (!authStore.isAuthenticated) return
+  try {
+    const { data } = await api.get('/chains/runs', { params: { unread_only: true, limit: 20 } })
+    notificationItems.value = data.items || []
+    notificationCount.value = data.unread_count ?? notificationItems.value.length
+  } catch {
+    notificationItems.value = []
+    notificationCount.value = 0
+  }
+}
+
 onMounted(() => {
-  if (authStore.isAuthenticated) authStore.fetchUser()
+  if (authStore.isAuthenticated) {
+    authStore.fetchUser()
+    fetchNotifications()
+    notificationPollTimer = setInterval(fetchNotifications, 45000)
+  }
+})
+
+onUnmounted(() => {
+  if (notificationPollTimer) clearInterval(notificationPollTimer)
 })
 </script>
 

@@ -56,6 +56,9 @@ def validate_chain_definition(
         if node_type == "slug":
             if not n.get("slug"):
                 errors.append(f"Slug node {nid} missing slug")
+        elif node_type == "approval":
+            if agent_id is not None:
+                errors.append(f"Approval node {nid} must not have agent_id")
         elif agent_id is None:
             errors.append(f"Node {nid} missing agent_id")
         elif agent_id not in agent_lookup:
@@ -72,7 +75,10 @@ def validate_chain_definition(
             continue
         src_agent_id = node_by_id[src].get("agent_id")
         tgt_agent_id = node_by_id[tgt].get("agent_id")
-        if src_agent_id is not None and tgt_agent_id is not None:
+        src_type = node_by_id[src].get("type")
+        tgt_type = node_by_id[tgt].get("type")
+        # Only check agent format compatibility when both endpoints are agents (not approval/slug)
+        if src_agent_id is not None and tgt_agent_id is not None and src_type != "approval" and tgt_type != "approval":
             src_agent = agent_lookup.get(src_agent_id)
             tgt_agent = agent_lookup.get(tgt_agent_id)
             if src_agent and tgt_agent and not can_chain(src_agent, tgt_agent):

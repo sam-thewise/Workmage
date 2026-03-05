@@ -23,6 +23,8 @@ from app.models.content_draft import ContentDraft
 from app.models.user_personality import UserPersonalityProfile
 from app.models.saved_output import SavedOutput
 from app.models.user_github_token import UserGitHubToken
+from app.models.chain_approval import ChainApprovalRequest
+from app.models.chain_run import ChainRun
 
 __all__ = [
     "User",
@@ -52,4 +54,6 @@ __all__ = [
     "UserPersonalityProfile",
     "SavedOutput",
     "UserGitHubToken",
+    "ChainApprovalRequest",
+    "ChainRun",
 ]
