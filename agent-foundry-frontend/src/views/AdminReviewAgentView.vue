@@ -21,7 +21,7 @@
         <v-btn color="error" @click="reject">Reject</v-btn>
       </div>
     </div>
-    <p v-else class="text-error py-4">Agent not found.</p>
+    <p v-else class="text-error py-4">AI Role not found.</p>
   </div>
 </template>
 

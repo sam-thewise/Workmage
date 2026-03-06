@@ -1,10 +1,10 @@
 <template>
   <div class="create-agent mx-auto" style="max-width: 720px;">
-    <h1 class="text-h4 mb-4">{{ isEdit ? 'Edit Agent' : 'Create Agent' }}</h1>
+    <h1 class="text-h4 mb-4">{{ isEdit ? 'Edit AI Role' : 'Create AI Role' }}</h1>
     <v-form @submit.prevent="submit" class="d-flex flex-column gap-4">
       <v-card variant="tonal" class="pa-4">
         <v-label class="text-body-2 font-weight-medium mb-2 d-block">OASF Manifest (JSON or YAML)</v-label>
-        <v-textarea v-model="manifestRaw" rows="12" placeholder='{"name":"My Agent","version":"1.0.0",...}' density="comfortable" class="mb-2" />
+        <v-textarea v-model="manifestRaw" rows="12" placeholder='{"name":"My AI Role","version":"1.0.0",...}' density="comfortable" class="mb-2" />
         <v-btn type="button" variant="outlined" size="small" @click="validateManifest" class="mb-2">Validate</v-btn>
         <div v-if="validationResult" :class="['pa-3 rounded', validationResult.valid ? 'bg-success' : 'bg-error']">
           <span v-if="validationResult.valid">✓ Manifest is valid</span>
@@ -16,8 +16,8 @@
           </div>
         </div>
       </v-card>
-      <v-text-field v-model="name" label="Name (override manifest)" placeholder="Agent name from manifest" density="comfortable" />
-      <v-textarea v-model="description" label="Description (override manifest)" placeholder="Agent description" rows="3" density="comfortable" />
+      <v-text-field v-model="name" label="Name (override manifest)" placeholder="AI Role name from manifest" density="comfortable" />
+      <v-textarea v-model="description" label="Description (override manifest)" placeholder="AI Role description" rows="3" density="comfortable" />
       <v-text-field v-model.number="priceDollars" type="number" min="0" step="0.01" label="Price (USD)" placeholder="0 = free" density="comfortable" />
       <v-card v-if="priceDollars > 0" variant="tonal" class="pa-3">
         <p class="text-body-2 mb-1"><strong>Buyer pays:</strong> ${{ priceDisplay }}</p>

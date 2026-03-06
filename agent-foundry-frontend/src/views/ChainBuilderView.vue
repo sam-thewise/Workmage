@@ -2,7 +2,7 @@
   <div class="chain-builder">
     <div class="chain-builder-header">
       <div class="toolbar d-flex flex-wrap align-center gap-2">
-        <v-text-field v-model="chainName" placeholder="Chain name" density="compact" hide-details class="chain-name-input" />
+        <v-text-field v-model="chainName" placeholder="AI Team name" density="compact" hide-details class="chain-name-input" />
         <v-text-field v-model="chainCategory" placeholder="Category" density="compact" hide-details class="chain-meta-input" />
         <v-text-field v-model.number="chainPriceCents" type="number" min="0" placeholder="Price (cents)" density="compact" hide-details class="chain-meta-input" />
         <v-btn color="primary" size="small" :loading="saving" :disabled="!chainName.trim()" @click="saveChain">Save</v-btn>
@@ -14,13 +14,13 @@
         <span v-if="saveError" class="text-error text-caption">{{ saveError }}</span>
       </div>
       <div class="chain-meta-row">
-        <v-text-field v-model="chainDescription" placeholder="Chain description" density="compact" hide-details class="chain-desc-input" />
+        <v-text-field v-model="chainDescription" placeholder="AI Team description" density="compact" hide-details class="chain-desc-input" />
         <v-text-field v-model="chainTagsText" placeholder="Tags (e.g. sales, research)" density="compact" hide-details class="chain-tags-input" />
       </div>
     </div>
     <div class="builder-layout">
       <div class="palette">
-        <h3>Agents</h3>
+        <h3>AI Roles</h3>
         <p class="hint">Drag to canvas or click to add</p>
         <details class="help">
           <summary>How to use</summary>
@@ -42,10 +42,10 @@
             @dragstart="onDragStart($event, a)"
             @click="addAgentNode(a)"
           >
-            {{ a.name || `Agent #${a.id}` }}
+            {{ a.name || `AI Role #${a.id}` }}
           </li>
         </ul>
-        <p v-if="!availableAgents.length" class="empty">No agents available. Add agents in Dashboard or use listed agents.</p>
+        <p v-if="!availableAgents.length" class="empty">No AI roles available. Add AI roles in Dashboard or use listed AI roles.</p>
         <h3 class="mt-3">Slugs</h3>
         <p class="hint">Add a slug node; connect it to an agent's input to use saved output.</p>
         <div class="d-flex gap-1 mb-2">
@@ -115,7 +115,7 @@
 
     <v-dialog v-model="showRunModal" max-width="500" persistent class="run-chain-dialog" content-class="run-chain-dialog-content">
       <v-card class="pa-4 run-chain-modal-card">
-        <h3 class="text-h6 mb-4">Run Chain</h3>
+        <h3 class="text-h6 mb-4">Run AI Team</h3>
         <v-textarea v-model="runInput" rows="4" placeholder="Optional: prompt for entry nodes. Leave empty if chain uses only slugs." label="Input" density="comfortable" class="mb-3" />
         <v-select v-model="runModel" :items="runModelOptions" item-title="title" item-value="value" label="Model" density="comfortable" class="mb-3" />
         <v-switch v-model="runByok" label="Use my API key (BYOK)" color="primary" hide-details class="mb-4 byok-switch-high-contrast" />
@@ -153,6 +153,7 @@ import AgentNode from '@/components/AgentNode.vue'
 import SlugNode from '@/components/SlugNode.vue'
 import ApprovalNode from '@/components/ApprovalNode.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useWorkspaceStore } from '@/stores/workspace'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import api from '@/services/api'
@@ -306,9 +307,9 @@ async function loadChain() {
 }
 
 function getAgentLabel(agentId, agents) {
-  if (agentId == null) return 'Agent #?'
+  if (agentId == null) return 'AI Role #?'
   const a = (agents || []).find(x => x.id === agentId)
-  return (a && a.name) ? a.name : `Agent #${agentId}`
+  return (a && a.name) ? a.name : `AI Role #${agentId}`
 }
 
 function addAgentNode(a, position) {
@@ -323,7 +324,7 @@ function addAgentNode(a, position) {
     type: 'agent',
     position: defaultPos,
     data: {
-      label: (agentName && String(agentName).trim()) ? agentName : `Agent #${agentId ?? '?'}`,
+      label: (agentName && String(agentName).trim()) ? agentName : `AI Role #${agentId ?? '?'}`,
       agent_id: agentId,
       isEntry,
       lane: 'main',
@@ -527,6 +528,7 @@ async function saveChain() {
         definition: defn,
       })
     } else {
+      const workspaceStore = useWorkspaceStore()
       const { data } = await api.post('/chains', {
         name: chainName.value,
         description: chainDescription.value || null,
@@ -534,6 +536,7 @@ async function saveChain() {
         category: chainCategory.value || null,
         tags: chainTagsText.value ? chainTagsText.value.split(',').map((t) => t.trim()).filter(Boolean) : [],
         definition: defn,
+        workspace_id: workspaceStore.currentWorkspaceId || undefined,
       })
       chainId.value = data.id
       chainStatus.value = data.status || 'draft'
@@ -735,7 +738,7 @@ watch(() => route.params.id, (id) => {
 .agent-node-content { display: flex; align-items: center; gap: 0.5rem; }
 .badge { font-size: 0.7rem; background: var(--wm-primary); color: var(--wm-white); padding: 0.15rem 0.4rem; border-radius: 4px; }
 
-/* Run Chain modal: opaque overlay and card so canvas doesn't show through */
+/* Run AI Team modal: opaque overlay and card so canvas doesn't show through */
 .run-chain-modal-card {
   background: rgb(var(--v-theme-surface)) !important;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));

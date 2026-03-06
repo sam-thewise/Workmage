@@ -14,6 +14,27 @@ body,
   font-family: var(--wm-font-body);
 }
 
+/* Cards: solid background so content behind doesn't show through */
+.v-application .v-card {
+  background-color: rgb(var(--v-theme-surface)) !important;
+  opacity: 1;
+}
+
+/*
+ * Dialogs teleport content to body (outside .v-application), so the rule above
+ * never applies to v-cards inside v-dialog. Target cards and overlay content
+ * globally so dialog content is opaque.
+ */
+.v-card {
+  background-color: rgb(var(--v-theme-surface)) !important;
+  opacity: 1;
+}
+/* Dialog content wrapper (teleported to body): ensure the content area is opaque */
+.v-dialog .v-overlay__content {
+  background-color: rgb(var(--v-theme-surface));
+  opacity: 1;
+}
+
 h1,
 h2,
 h3,

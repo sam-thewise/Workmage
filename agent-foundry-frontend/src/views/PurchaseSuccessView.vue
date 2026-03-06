@@ -9,8 +9,8 @@
     <template v-else>
       <p class="mb-4">Thank you! You now have access to this {{ chainId ? 'chain' : 'agent' }}.</p>
       <div class="d-flex gap-2 justify-center flex-wrap">
-        <v-btn v-if="agentId" color="primary" :to="`/agents/${agentId}`">View Agent</v-btn>
-        <v-btn v-else-if="chainId" color="primary" :to="`/marketplace/chains/${chainId}`">View Chain</v-btn>
+        <v-btn v-if="agentId" color="primary" :to="`/agents/${agentId}`">View AI Role</v-btn>
+        <v-btn v-else-if="chainId" color="primary" :to="`/marketplace/chains/${chainId}`">View AI Team</v-btn>
         <v-btn variant="outlined" color="primary" :to="chainId ? '/marketplace/chains' : '/marketplace'">Browse More</v-btn>
       </div>
     </template>

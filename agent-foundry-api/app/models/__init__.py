@@ -25,6 +25,10 @@ from app.models.saved_output import SavedOutput
 from app.models.user_github_token import UserGitHubToken
 from app.models.chain_approval import ChainApprovalRequest
 from app.models.chain_run import ChainRun
+from app.models.workspace import Workspace
+from app.models.workspace_member import WorkspaceMember, WorkspaceRole
+from app.models.workspace_secret import WorkspaceSecret
+from app.models.run_share_link import RunShareLink
 
 __all__ = [
     "User",
@@ -56,4 +60,9 @@ __all__ = [
     "UserGitHubToken",
     "ChainApprovalRequest",
     "ChainRun",
+    "Workspace",
+    "WorkspaceMember",
+    "WorkspaceRole",
+    "WorkspaceSecret",
+    "RunShareLink",
 ]

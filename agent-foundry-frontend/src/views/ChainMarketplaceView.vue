@@ -1,6 +1,6 @@
 <template>
   <div class="marketplace">
-    <h1 class="text-h4 mb-4">Chain Marketplace</h1>
+    <h1 class="text-h4 mb-4">AI Team Marketplace</h1>
     <div class="d-flex align-center gap-2 mb-6">
       <label class="text-body-2">Category</label>
       <v-select

@@ -9,8 +9,17 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.security import verify_password
+from app.core.workspace_permissions import (
+    can_manage_secrets,
+    can_manage_billing_members_teams,
+    can_edit_teams,
+    can_run_teams,
+    can_view_runs,
+    can_view_outputs_only,
+)
 from app.db.session import get_db
 from app.models.user import User
+from app.models.workspace_member import WorkspaceMember
 
 security = HTTPBearer(auto_error=False)
 
@@ -80,3 +89,39 @@ async def get_admin(
             detail="Admin access required",
         )
     return user
+
+
+async def get_workspace_member(
+    db: AsyncSession,
+    workspace_id: int,
+    user_id: int,
+) -> WorkspaceMember | None:
+    """Return workspace membership for user if any."""
+    result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def require_workspace_role(
+    db: AsyncSession,
+    workspace_id: int,
+    user: User,
+    allowed_roles: list[str],
+) -> WorkspaceMember:
+    """Require user to be a member of the workspace with one of the allowed roles. Raises 403 otherwise."""
+    member = await get_workspace_member(db, workspace_id, user.id)
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
+    if member.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient role in this workspace",
+        )
+    return member

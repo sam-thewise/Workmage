@@ -1,10 +1,10 @@
 <template>
   <div class="agent-management mx-auto" style="max-width: 800px;">
-    <h1 class="text-h4 mb-2">My Agents</h1>
+    <h1 class="text-h4 mb-2">My AI Roles</h1>
     <p v-if="authStore.user?.role !== 'expert' && authStore.user?.role !== 'admin'" class="mb-4">Experts and admins can create and manage agents here.</p>
     <template v-else>
       <div class="d-flex gap-2 mb-4">
-        <v-btn color="primary" to="/dashboard/agents/create">Create Agent</v-btn>
+        <v-btn color="primary" to="/dashboard/agents/create">Create AI Role</v-btn>
         <v-btn variant="outlined" color="primary" to="/dashboard/settings">Stripe & Settings</v-btn>
       </div>
       <div v-if="loading" class="text-medium-emphasis mb-4">Loading...</div>

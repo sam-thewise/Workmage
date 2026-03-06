@@ -39,7 +39,7 @@
           </v-btn>
           <template v-else-if="purchased">
             <span class="text-success font-weight-medium align-self-center">✓ Purchased</span>
-            <v-btn color="primary" :to="`/run/${agent?.id}`">Run Agent</v-btn>
+            <v-btn color="primary" :to="`/run/${agent?.id}`">Run AI Role</v-btn>
           </template>
         </template>
         <v-btn v-else color="primary" to="/login">Login to Purchase</v-btn>
@@ -71,7 +71,7 @@ async function loadAgent() {
     const { data } = await api.get(`/agents/${route.params.id}`)
     agent.value = data
   } catch (e) {
-    error.value = 'Agent not found'
+    error.value = 'AI Role not found'
   } finally {
     loading.value = false
   }

@@ -12,7 +12,7 @@
         <span>Category: {{ chain.category || '—' }}</span>
       </div>
       <v-card variant="tonal" class="pa-4 mb-4">
-        <h3 class="text-subtitle-1 text-medium-emphasis mb-2">Chain Definition</h3>
+        <h3 class="text-subtitle-1 text-medium-emphasis mb-2">AI Team Definition</h3>
         <pre class="definition-pre pa-3 ma-0 text-body-2" style="background: rgba(0,0,0,0.2); border-radius: 8px; overflow: auto; max-height: 400px;">{{ JSON.stringify(chain.definition, null, 2) }}</pre>
       </v-card>
       <p class="text-body-2 text-medium-emphasis mb-4">Check for duplicates and verify included APIs/MCP usage is safe.</p>
@@ -21,7 +21,7 @@
         <v-btn color="error" @click="reject">Reject</v-btn>
       </div>
     </div>
-    <p v-else class="text-error py-4">Chain not found.</p>
+    <p v-else class="text-error py-4">AI Team not found.</p>
   </div>
 </template>
 

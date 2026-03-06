@@ -1,4 +1,6 @@
 """Chain endpoints - marketplace, moderation lifecycle, and run."""
+import secrets
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
 from celery.result import AsyncResult
@@ -8,8 +10,19 @@ from sqlalchemy import or_, select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_current_user_optional
+from app.api.deps import (
+    get_current_user,
+    get_current_user_optional,
+    get_workspace_member,
+    require_workspace_role,
+)
 from app.core.config import settings
+from app.core.workspace_permissions import (
+    can_edit_teams,
+    can_run_teams,
+    can_view_runs,
+    can_view_outputs_only,
+)
 from app.core.key_encryption import decrypt_api_key
 from app.db.session import get_db
 from app.models.agent import Agent, AgentStatus
@@ -17,6 +30,8 @@ from app.models.chain import AgentChain, ChainStatus
 from app.models.chain_approval import ChainApprovalRequest
 from app.models.chain_run import ChainRun
 from app.models.purchase import Purchase
+from app.models.run_share_link import RunShareLink
+from app.models.workspace_member import WorkspaceMember
 from app.models.subscription import Subscription
 from app.models.user import User
 from app.models.user_github_token import UserGitHubToken
@@ -35,6 +50,10 @@ GENERIC_ERROR = "Error communicating with server. Please try again later."
 class ChainApprovalApproveRequest(BaseModel):
     approved: bool = True
     next_stage_node_id: str | None = None
+
+
+class RunShareCreate(BaseModel):
+    expires_in_seconds: int | None = None
 
 
 def _sanitize_error(msg: str | None) -> str:
@@ -80,9 +99,13 @@ async def _agent_lookup_for_chain_definition_with_own(
 
 
 async def _has_chain_run_access(db: AsyncSession, chain: AgentChain, user: User) -> bool:
-    """A user can run a chain if owner/expert/admin/mod, purchased chain, or purchased all included agents."""
+    """A user can run a chain if workspace member with run permission, owner/expert/admin/mod, purchased chain, or purchased all included agents."""
     if user.role.value in ("admin", "moderator"):
         return True
+    if chain.workspace_id is not None:
+        member = await get_workspace_member(db, chain.workspace_id, user.id)
+        if member and can_run_teams(member.role):
+            return True
     if chain.expert_id == user.id or chain.buyer_id == user.id:
         return True
 
@@ -110,6 +133,7 @@ async def _has_chain_run_access(db: AsyncSession, chain: AgentChain, user: User)
 def _chain_to_dict(chain: AgentChain) -> dict:
     return {
         "id": chain.id,
+        "workspace_id": chain.workspace_id,
         "name": chain.name,
         "description": chain.description,
         "price_cents": chain.price_cents,
@@ -161,15 +185,30 @@ async def list_marketplace_chains(
 async def list_my_chains(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    workspace_id: int | None = Query(None),
 ):
-    """List current expert's authored chains."""
+    """List chains user can edit: own authored or workspace chains (with can_edit_teams)."""
     if user.role.value not in ("expert", "admin"):
         raise HTTPException(403, "Expert or admin access required")
-    result = await db.execute(
-        select(AgentChain)
-        .where(AgentChain.expert_id == user.id)
-        .order_by(AgentChain.updated_at.desc())
-    )
+    if workspace_id is not None:
+        member = await get_workspace_member(db, workspace_id, user.id)
+        if not member or not can_edit_teams(member.role):
+            raise HTTPException(403, "Not a member or cannot edit chains in this workspace")
+        q = select(AgentChain).where(AgentChain.workspace_id == workspace_id)
+    else:
+        ws_ids_result = await db.execute(
+            select(WorkspaceMember.workspace_id).where(
+                WorkspaceMember.user_id == user.id,
+                WorkspaceMember.role.in_(["owner", "admin", "member"]),
+            )
+        )
+        ws_id_list = [r[0] for r in ws_ids_result.all()]
+        q = select(AgentChain).where(
+            (AgentChain.expert_id == user.id)
+            | (AgentChain.workspace_id.in_(ws_id_list) if ws_id_list else AgentChain.id < 0)
+        )
+    q = q.order_by(AgentChain.updated_at.desc())
+    result = await db.execute(q)
     chains = result.scalars().all()
     return [
         {
@@ -193,9 +232,26 @@ async def create_chain(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a chain listing draft (experts only)."""
+    """Create a chain listing draft (experts only). Optionally scoped to workspace."""
     if user.role.value not in ("expert", "admin"):
         raise HTTPException(403, "Expert or admin access required")
+
+    workspace_id = payload.workspace_id
+    if workspace_id is not None:
+        member = await get_workspace_member(db, workspace_id, user.id)
+        if not member or not can_edit_teams(member.role):
+            raise HTTPException(403, "Not allowed to create chains in this workspace")
+    else:
+        # Default to user's first workspace (owner) if any
+        first_ws = await db.execute(
+            select(WorkspaceMember.workspace_id).where(
+                WorkspaceMember.user_id == user.id,
+                WorkspaceMember.role == "owner",
+            ).limit(1)
+        )
+        row = first_ws.first()
+        if row:
+            workspace_id = row[0]
 
     defn = payload.definition
     nodes = defn.get("nodes", [])
@@ -207,6 +263,7 @@ async def create_chain(
         raise HTTPException(400, detail={"message": "Invalid chain", "errors": errors})
 
     chain = AgentChain(
+        workspace_id=workspace_id,
         buyer_id=user.id,
         expert_id=user.id,
         name=payload.name,
@@ -251,13 +308,34 @@ async def list_chain_runs(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     chain_id: int | None = Query(None),
+    workspace_id: int | None = Query(None),
     status: str | None = Query(None),
     unread_only: bool = Query(False),
 ):
-    """List current user's chain runs for notifications and run history. Optionally include unread count."""
-    q = select(ChainRun, AgentChain.name).where(ChainRun.user_id == user.id).join(
+    """List chain runs: own runs or runs in workspaces where user has view permission."""
+    base = select(ChainRun, AgentChain.name).join(
         AgentChain, ChainRun.chain_id == AgentChain.id
     )
+    ws_id_list: list[int] = []
+    if workspace_id is not None:
+        member = await get_workspace_member(db, workspace_id, user.id)
+        if not member:
+            raise HTTPException(403, "Not a member of this workspace")
+        if not (can_view_runs(member.role) or can_view_outputs_only(member.role)):
+            raise HTTPException(403, "Cannot view runs in this workspace")
+        q = base.where(AgentChain.workspace_id == workspace_id)
+    else:
+        ws_ids_result = await db.execute(
+            select(WorkspaceMember.workspace_id).where(
+                WorkspaceMember.user_id == user.id,
+                WorkspaceMember.role.in_(["owner", "admin", "member", "viewer"]),
+            )
+        )
+        ws_id_list = [r[0] for r in ws_ids_result.all()]
+        q = base.where(
+            (ChainRun.user_id == user.id)
+            | (AgentChain.workspace_id.in_(ws_id_list) if ws_id_list else AgentChain.id < 0)
+        )
     if chain_id is not None:
         q = q.where(ChainRun.chain_id == chain_id)
     if status:
@@ -267,7 +345,16 @@ async def list_chain_runs(
     q = q.order_by(ChainRun.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(q)
     rows = result.all()
-    count_q = select(func.count(ChainRun.id)).where(ChainRun.user_id == user.id, ChainRun.read_at.is_(None))
+    count_q = select(func.count(ChainRun.id)).join(AgentChain, ChainRun.chain_id == AgentChain.id).where(
+        ChainRun.read_at.is_(None)
+    )
+    if workspace_id is not None:
+        count_q = count_q.where(AgentChain.workspace_id == workspace_id)
+    else:
+        count_q = count_q.where(
+            (ChainRun.user_id == user.id)
+            | (AgentChain.workspace_id.in_(ws_id_list) if ws_id_list else AgentChain.id < 0)
+        )
     if chain_id is not None:
         count_q = count_q.where(ChainRun.chain_id == chain_id)
     if status:
@@ -294,17 +381,22 @@ async def get_chain_run_result(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a single run by id (for viewing result or approval UI)."""
+    """Get a single run by id. Viewer role sees only content/summary (output only)."""
     result = await db.execute(
-        select(ChainRun, AgentChain.name).where(
+        select(ChainRun, AgentChain.name, AgentChain.workspace_id).where(
             ChainRun.id == run_id,
-            ChainRun.user_id == user.id,
         ).join(AgentChain, ChainRun.chain_id == AgentChain.id)
     )
     row = result.one_or_none()
     if not row:
         raise HTTPException(404, "Run not found")
-    run, chain_name = row[0], row[1]
+    run, chain_name, chain_workspace_id = row[0], row[1], row[2]
+    is_owner = run.user_id == user.id
+    member = await get_workspace_member(db, chain_workspace_id, user.id) if chain_workspace_id else None
+    can_view = is_owner or (member and (can_view_runs(member.role) or can_view_outputs_only(member.role)))
+    if not can_view:
+        raise HTTPException(404, "Run not found")
+    viewer_only = member and can_view_outputs_only(member.role) and not is_owner
     out = {
         "id": run.id,
         "chain_id": run.chain_id,
@@ -312,13 +404,15 @@ async def get_chain_run_result(
         "status": run.status,
         "content": run.content,
         "error": run.error,
-        "usage": run.usage,
-        "approval_id": run.approval_id,
         "summary": run.summary,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "read_at": run.read_at.isoformat() if run.read_at else None,
     }
-    if run.status == "awaiting_approval":
+    if not viewer_only:
+        out["usage"] = run.usage
+        out["approval_id"] = run.approval_id
+        out["audit_trail"] = run.audit_trail
+    if run.status == "awaiting_approval" and not viewer_only:
         approval = (
             await db.execute(
                 select(ChainApprovalRequest).where(ChainApprovalRequest.id == run.approval_id)
@@ -350,17 +444,59 @@ async def mark_chain_run_read(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mark a run as read (clears from unread notification count)."""
+    """Mark a run as read (clears from unread notification count). Allowed if user can view run."""
     from datetime import datetime, timezone
     result = await db.execute(
-        select(ChainRun).where(ChainRun.id == run_id, ChainRun.user_id == user.id)
+        select(ChainRun, AgentChain.workspace_id).where(ChainRun.id == run_id).join(
+            AgentChain, ChainRun.chain_id == AgentChain.id
+        )
     )
-    run = result.scalar_one_or_none()
-    if not run:
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "Run not found")
+    run, chain_workspace_id = row[0], row[1]
+    is_owner = run.user_id == user.id
+    member = await get_workspace_member(db, chain_workspace_id, user.id) if chain_workspace_id else None
+    if not is_owner and not (member and (can_view_runs(member.role) or can_view_outputs_only(member.role))):
         raise HTTPException(404, "Run not found")
     run.read_at = datetime.now(timezone.utc)
     await db.commit()
     return {"run_id": run_id, "read_at": run.read_at.isoformat()}
+
+
+@router.post("/runs/{run_id}/share")
+async def create_run_share_link(
+    run_id: int,
+    payload: RunShareCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a share link for run output (private tokenized URL, optional expiry). User must be able to view run."""
+    result = await db.execute(
+        select(ChainRun, AgentChain.workspace_id).where(ChainRun.id == run_id).join(
+            AgentChain, ChainRun.chain_id == AgentChain.id
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(404, "Run not found")
+    run, chain_workspace_id = row[0], row[1]
+    is_owner = run.user_id == user.id
+    member = await get_workspace_member(db, chain_workspace_id, user.id) if chain_workspace_id else None
+    if not is_owner and not (member and (can_view_runs(member.role) or can_view_outputs_only(member.role))):
+        raise HTTPException(404, "Run not found")
+    expires_at = None
+    if payload.expires_in_seconds is not None:
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=payload.expires_in_seconds)
+    token = secrets.token_urlsafe(32)
+    link = RunShareLink(run_id=run_id, token=token, expires_at=expires_at)
+    db.add(link)
+    await db.commit()
+    return {
+        "token": token,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "url": f"/share/run/{token}",
+    }
 
 
 @router.get("/runs/{job_id}")
@@ -454,7 +590,12 @@ async def get_chain(
             or user.role.value in ("admin", "moderator")
         )
     )
-    if not is_public and not is_owner_or_staff:
+    is_workspace_member_can_view = False
+    if not is_public and not is_owner_or_staff and user and chain.workspace_id is not None:
+        member = await get_workspace_member(db, chain.workspace_id, user.id)
+        if member and can_view_runs(member.role):
+            is_workspace_member_can_view = True
+    if not is_public and not is_owner_or_staff and not is_workspace_member_can_view:
         raise HTTPException(404, "Chain not found")
 
     agent_ids = list(
@@ -472,6 +613,14 @@ async def get_chain(
     return out
 
 
+def _can_edit_chain(chain: AgentChain, user: User, member: WorkspaceMember | None) -> bool:
+    if chain.expert_id == user.id or user.role.value == "admin":
+        return True
+    if chain.workspace_id is not None and member and can_edit_teams(member.role):
+        return True
+    return False
+
+
 @router.put("/{chain_id}", response_model=ChainResponse)
 async def update_chain(
     chain_id: int,
@@ -479,14 +628,15 @@ async def update_chain(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update authored chain draft/rejected chain."""
+    """Update authored chain draft/rejected chain (owner or workspace member with edit)."""
     if user.role.value not in ("expert", "admin"):
         raise HTTPException(403, "Expert or admin access required")
-    result = await db.execute(
-        select(AgentChain).where(AgentChain.id == chain_id, AgentChain.expert_id == user.id)
-    )
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
     chain = result.scalar_one_or_none()
     if not chain:
+        raise HTTPException(404, "Chain not found")
+    member = await get_workspace_member(db, chain.workspace_id, user.id) if chain.workspace_id else None
+    if not _can_edit_chain(chain, user, member):
         raise HTTPException(404, "Chain not found")
 
     if payload.definition is not None:
@@ -528,11 +678,12 @@ async def publish_chain(
     """Submit chain for moderation review. All agents in the chain must be published (listed) first."""
     if user.role.value not in ("expert", "admin"):
         raise HTTPException(403, "Expert or admin access required")
-    result = await db.execute(
-        select(AgentChain).where(AgentChain.id == chain_id, AgentChain.expert_id == user.id)
-    )
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
     chain = result.scalar_one_or_none()
     if not chain:
+        raise HTTPException(404, "Chain not found")
+    member = await get_workspace_member(db, chain.workspace_id, user.id) if chain.workspace_id else None
+    if not _can_edit_chain(chain, user, member):
         raise HTTPException(404, "Chain not found")
     agent_ids = list(
         {n.get("agent_id") for n in (chain.definition or {}).get("nodes", []) if n.get("agent_id") is not None}
@@ -578,11 +729,12 @@ async def unpublish_chain(
     """Move chain back to draft."""
     if user.role.value not in ("expert", "admin"):
         raise HTTPException(403, "Expert or admin access required")
-    result = await db.execute(
-        select(AgentChain).where(AgentChain.id == chain_id, AgentChain.expert_id == user.id)
-    )
+    result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
     chain = result.scalar_one_or_none()
     if not chain:
+        raise HTTPException(404, "Chain not found")
+    member = await get_workspace_member(db, chain.workspace_id, user.id) if chain.workspace_id else None
+    if not _can_edit_chain(chain, user, member):
         raise HTTPException(404, "Chain not found")
     chain.status = ChainStatus.DRAFT.value
     chain.approval_status = "draft"

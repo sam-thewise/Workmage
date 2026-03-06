@@ -14,7 +14,7 @@
     <v-table v-else-if="wallets.length" class="mb-4">
       <thead>
         <tr>
-          <th>Agent</th>
+          <th>AI Role</th>
           <th>Network</th>
           <th>Address</th>
           <th>Status</th>
@@ -44,7 +44,7 @@
           :items="eligibleAgents"
           item-title="name"
           item-value="id"
-          label="Agent"
+          label="AI Role"
           density="compact"
           class="mb-2"
           :disabled="loadingAgents"
@@ -157,7 +157,7 @@ async function loadEligibleAgents() {
     const byId = new Map()
     myAgents.forEach(a => { byId.set(a.id, { id: a.id, name: a.name }) })
     purchases.filter(p => p.agent_id).forEach(p => {
-      if (!byId.has(p.agent_id)) byId.set(p.agent_id, { id: p.agent_id, name: p.agent_name || `Agent ${p.agent_id}` })
+      if (!byId.has(p.agent_id)) byId.set(p.agent_id, { id: p.agent_id, name: p.agent_name || `AI Role ${p.agent_id}` })
     })
     eligibleAgents.value = Array.from(byId.values())
   } catch {

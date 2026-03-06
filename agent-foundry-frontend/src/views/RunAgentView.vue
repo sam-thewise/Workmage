@@ -1,14 +1,14 @@
 <template>
   <div class="run-agent mx-auto" style="max-width: 720px;">
-    <h1 class="text-h4 mb-4">Run Agent</h1>
-    <div v-if="!agent && agentId" class="text-medium-emphasis my-4">Loading agent...</div>
+    <h1 class="text-h4 mb-4">Run AI Role</h1>
+    <div v-if="!agent && agentId" class="text-medium-emphasis my-4">Loading AI role...</div>
     <div v-else-if="!agent && !agentId" class="pick-agent">
-      <h2 class="text-h6 mb-2">Choose an agent to run</h2>
+      <h2 class="text-h6 mb-2">Choose an AI role to run</h2>
       <p class="text-body-2 text-medium-emphasis mb-4">
-        <router-link to="/chains" class="text-accent text-decoration-none">Or build a chain</router-link> of agents.
+        <router-link to="/chains" class="text-accent text-decoration-none">Or build an AI team</router-link> of AI roles.
       </p>
       <template v-if="myAgents.length">
-        <h3 class="text-subtitle-1 mb-2">Your agents</h3>
+        <h3 class="text-subtitle-1 mb-2">Your AI roles</h3>
         <ul class="pa-0 ma-0 mb-4" style="list-style: none;">
           <li v-for="a in myAgents" :key="a.id" class="py-2">
             <router-link :to="`/run/${a.id}`" class="text-accent text-decoration-none">{{ a.name }}</router-link>
@@ -16,16 +16,16 @@
           </li>
         </ul>
       </template>
-      <h3 class="text-subtitle-1 mb-2">Purchased agents</h3>
+      <h3 class="text-subtitle-1 mb-2">Purchased AI roles</h3>
       <div v-if="purchasesLoading" class="mb-4">Loading...</div>
       <ul v-else class="purchase-list pa-0 ma-0 mb-4" style="list-style: none;">
         <li v-for="p in purchases" :key="p.agent_id" class="py-2">
-          <router-link :to="`/run/${p.agent_id}`" class="text-accent text-decoration-none">{{ p.agent_name || `Agent #${p.agent_id}` }}</router-link>
+          <router-link :to="`/run/${p.agent_id}`" class="text-accent text-decoration-none">{{ p.agent_name || `AI Role #${p.agent_id}` }}</router-link>
         </li>
       </ul>
-      <p v-if="!purchasesLoading && purchases.length === 0 && !myAgents.length" class="text-medium-emphasis">No agents to run. <router-link to="/marketplace" class="text-accent text-decoration-none">Browse marketplace</router-link> or <router-link to="/dashboard/agents" class="text-accent text-decoration-none">create an agent</router-link>.</p>
+      <p v-if="!purchasesLoading && purchases.length === 0 && !myAgents.length" class="text-medium-emphasis">No AI roles to run. <router-link to="/marketplace" class="text-accent text-decoration-none">Browse marketplace</router-link> or <router-link to="/dashboard/agents" class="text-accent text-decoration-none">create an AI role</router-link>.</p>
     </div>
-    <div v-else-if="!agent" class="text-error my-4">Agent not found.</div>
+    <div v-else-if="!agent" class="text-error my-4">AI Role not found.</div>
     <v-form v-else @submit.prevent="run" class="d-flex flex-column gap-4 mt-4">
       <div class="agent-info">
         <h2 class="text-h6 mb-1">{{ agent.name }}</h2>

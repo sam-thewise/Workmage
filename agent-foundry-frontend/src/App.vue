@@ -10,13 +10,37 @@
       <v-spacer />
       <v-btn variant="text" color="on-surface" to="/">Home</v-btn>
       <v-btn variant="text" color="on-surface" to="/marketplace">Marketplace</v-btn>
-      <v-btn variant="text" color="on-surface" to="/marketplace/chains">Chain Marketplace</v-btn>
+      <v-btn variant="text" color="on-surface" to="/marketplace/chains">AI Team Marketplace</v-btn>
       <template v-if="authStore.isAuthenticated">
-        <v-btn variant="text" color="on-surface" to="/chains">My Chains</v-btn>
-        <v-btn v-if="authStore.user?.role === 'expert' || authStore.user?.role === 'admin'" variant="text" color="on-surface" to="/dashboard/agents">My Agents</v-btn>
+        <v-menu v-if="workspaceStore.workspaces.length" location="bottom" max-width="280">
+          <template #activator="{ props: menuProps }">
+            <v-btn v-bind="menuProps" variant="text" color="on-surface" size="small">
+              {{ workspaceStore.currentWorkspace?.name || 'Workspace' }}
+              <v-icon end size="small">mdi-chevron-down</v-icon>
+            </v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="w in workspaceStore.workspaces"
+              :key="w.id"
+              :title="w.name"
+              :subtitle="w.role"
+              :active="w.id === workspaceStore.currentWorkspaceId"
+              @click="workspaceStore.setCurrentWorkspace(w.id)"
+            />
+            <v-divider />
+            <v-list-item
+              v-if="workspaceStore.currentWorkspaceId"
+              title="Workspace settings"
+              :to="'/workspaces/' + workspaceStore.currentWorkspaceId + '/settings'"
+            />
+          </v-list>
+        </v-menu>
+        <v-btn variant="text" color="on-surface" to="/chains">My AI Teams</v-btn>
+        <v-btn v-if="authStore.user?.role === 'expert' || authStore.user?.role === 'admin'" variant="text" color="on-surface" to="/dashboard/agents">My AI Roles</v-btn>
         <v-btn v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'moderator'" variant="text" color="on-surface" to="/admin">Admin</v-btn>
         <v-btn variant="text" color="on-surface" to="/dashboard">Dashboard</v-btn>
-        <v-btn variant="text" color="on-surface" to="/run">Run Agent</v-btn>
+        <v-btn variant="text" color="on-surface" to="/run">Run AI Role</v-btn>
         <v-btn variant="text" color="on-surface" to="/runs">Run history</v-btn>
         <v-btn variant="text" color="on-surface" to="/settings/keys">API Keys</v-btn>
         <v-menu location="bottom end" :close-on-content-click="false" max-width="360">
@@ -41,7 +65,7 @@
                 :subtitle="item.status === 'awaiting_approval' ? 'Needs your approval' : item.status === 'completed' ? 'Finished' : item.status === 'error' ? 'Failed' : item.status"
                 @click="fetchNotifications"
               >
-                <template #title>{{ item.chain_name || 'Chain' }}</template>
+                <template #title>{{ item.chain_name || 'AI Team' }}</template>
                 <template #prepend>
                   <v-icon :color="item.status === 'awaiting_approval' ? 'warning' : item.status === 'completed' ? 'success' : item.status === 'error' ? 'error' : 'default'">
                     {{ item.status === 'awaiting_approval' ? 'mdi-hand-back-right' : item.status === 'completed' ? 'mdi-check-circle' : item.status === 'error' ? 'mdi-alert-circle' : 'mdi-information' }}
@@ -72,9 +96,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useWorkspaceStore } from '@/stores/workspace'
 import api from '@/services/api'
 
 const authStore = useAuthStore()
+const workspaceStore = useWorkspaceStore()
 const notificationCount = ref(0)
 const notificationItems = ref([])
 let notificationPollTimer = null
@@ -94,6 +120,7 @@ async function fetchNotifications() {
 onMounted(() => {
   if (authStore.isAuthenticated) {
     authStore.fetchUser()
+    workspaceStore.fetchWorkspaces()
     fetchNotifications()
     notificationPollTimer = setInterval(fetchNotifications, 45000)
   }

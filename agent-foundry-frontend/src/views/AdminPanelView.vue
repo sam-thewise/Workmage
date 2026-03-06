@@ -4,17 +4,17 @@
     <v-chip :color="authStore.user?.role === 'admin' ? 'primary' : 'info'" size="small" class="mb-4">{{ authStore.user?.role }}</v-chip>
 
     <v-tabs v-model="tab" class="mb-4">
-      <v-tab value="pending">Pending Agents ({{ pendingCount }})</v-tab>
-      <v-tab value="pendingChains" @click="loadPendingChains()">Pending Chains ({{ pendingChainCount }})</v-tab>
+      <v-tab value="pending">Pending AI Roles ({{ pendingCount }})</v-tab>
+      <v-tab value="pendingChains" @click="loadPendingChains()">Pending AI Teams ({{ pendingChainCount }})</v-tab>
       <v-tab v-if="authStore.user?.role === 'admin'" value="invites" @click="loadInvites()">Moderator Invites</v-tab>
-      <v-tab v-if="authStore.user?.role === 'admin'" value="agentNft" @click="loadAgentNftContracts()">Agent NFT Contracts</v-tab>
+      <v-tab v-if="authStore.user?.role === 'admin'" value="agentNft" @click="loadAgentNftContracts()">AI Role NFT Contracts</v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
       <!-- Pending agents -->
       <v-window-item value="pending">
         <div v-if="pendingLoading" class="text-medium-emphasis py-4">Loading...</div>
-        <div v-else-if="pendingAgents.length === 0" class="text-medium-emphasis py-4">No agents pending approval.</div>
+        <div v-else-if="pendingAgents.length === 0" class="text-medium-emphasis py-4">No AI roles pending approval.</div>
         <div v-else class="d-flex flex-column gap-2">
           <v-card v-for="a in pendingAgents" :key="a.id" variant="tonal" class="pa-4">
             <div class="d-flex justify-space-between align-center flex-wrap gap-2">
@@ -35,7 +35,7 @@
       <!-- Pending chains -->
       <v-window-item value="pendingChains">
         <div v-if="pendingChainsLoading" class="text-medium-emphasis py-4">Loading...</div>
-        <div v-else-if="pendingChains.length === 0" class="text-medium-emphasis py-4">No chains pending approval.</div>
+        <div v-else-if="pendingChains.length === 0" class="text-medium-emphasis py-4">No AI teams pending approval.</div>
         <div v-else class="d-flex flex-column gap-2">
           <v-card v-for="c in pendingChains" :key="c.id" variant="tonal" class="pa-4">
             <div class="d-flex justify-space-between align-center flex-wrap gap-2">
@@ -53,7 +53,7 @@
         </div>
       </v-window-item>
 
-      <!-- Agent NFT contracts -->
+      <!-- AI Role NFT contracts -->
       <v-window-item value="agentNft">
         <h3 class="text-h6 mb-3">Registered shared agent NFT contracts</h3>
         <div v-if="agentNftLoading" class="text-medium-emphasis py-4">Loading...</div>

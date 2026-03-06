@@ -2,7 +2,7 @@
   <div class="marketplace">
     <h1 class="text-h4 mb-2">Marketplace</h1>
     <p class="mb-4">
-      <router-link to="/marketplace/chains" class="text-accent text-decoration-none">Browse Chain Marketplace</router-link>
+      <router-link to="/marketplace/chains" class="text-accent text-decoration-none">Browse AI Team Marketplace</router-link>
     </p>
     <div class="d-flex align-center gap-2 mb-6">
       <label class="text-body-2">Category</label>

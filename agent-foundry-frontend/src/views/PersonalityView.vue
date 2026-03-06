@@ -2,7 +2,7 @@
   <div class="personality mx-auto" style="max-width: 800px;">
     <h2 class="text-h5 mb-2">Your voice / personality</h2>
     <p class="text-body-2 text-medium-emphasis mb-4">
-      Create a profile from your tweets so generated posts and replies match your style. Paste tweet text or a twstalker.com profile URL to analyze, then tweak and save. Chains (e.g. X Content Writer) will use this when creating drafts.
+      Create a profile from your tweets so generated posts and replies match your style. Paste tweet text or a twstalker.com profile URL to analyze, then tweak and save. AI Teams (e.g. X Content Writer) will use this when creating drafts.
     </p>
 
     <v-card variant="outlined" class="pa-4 mb-4">

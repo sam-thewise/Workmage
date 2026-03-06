@@ -1,11 +1,11 @@
 <template>
   <div class="chains-list mx-auto" style="max-width: 640px;">
-    <h1 class="text-h4 mb-2">Chains</h1>
-    <p class="text-body-2 text-medium-emphasis mb-4">Build and publish chain listings with moderation.</p>
-    <v-btn color="primary" to="/chains/new" class="mb-4">Create Chain</v-btn>
+    <h1 class="text-h4 mb-2">AI Teams</h1>
+    <p class="text-body-2 text-medium-emphasis mb-4">Build and publish AI team listings with moderation.</p>
+    <v-btn color="primary" to="/chains/new" class="mb-4">Create AI Team</v-btn>
     <div v-if="loading" class="text-medium-emphasis mb-4">Loading...</div>
     <ul v-else-if="chains.length === 0" class="pa-0 ma-0 text-medium-emphasis" style="list-style: none;">
-      <li>No chains yet. <router-link to="/chains/new" class="text-accent text-decoration-none">Create one</router-link>.</li>
+      <li>No AI teams yet. <router-link to="/chains/new" class="text-accent text-decoration-none">Create one</router-link>.</li>
     </ul>
     <ul v-else class="pa-0 ma-0" style="list-style: none;">
       <li v-for="c in chains" :key="c.id" class="mb-2">
@@ -21,16 +21,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import api from '@/services/api'
+import { useWorkspaceStore } from '@/stores/workspace'
 
+const workspaceStore = useWorkspaceStore()
 const chains = ref([])
 const loading = ref(true)
 
 async function loadChains() {
   loading.value = true
   try {
-    const { data } = await api.get('/chains/my')
+    const params = {}
+    if (workspaceStore.currentWorkspaceId) params.workspace_id = workspaceStore.currentWorkspaceId
+    const { data } = await api.get('/chains/my', { params })
     chains.value = data || []
   } catch {
     chains.value = []
@@ -45,5 +49,9 @@ function formatDate(iso) {
   return d.toLocaleDateString()
 }
 
-onMounted(loadChains)
+onMounted(async () => {
+  await workspaceStore.fetchWorkspaces()
+  loadChains()
+})
+watch(() => workspaceStore.currentWorkspaceId, loadChains)
 </script>

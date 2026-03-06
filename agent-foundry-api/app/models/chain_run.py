@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.chain import AgentChain
     from app.models.chain_approval import ChainApprovalRequest
+    from app.models.run_share_link import RunShareLink
 
 
 class ChainRun(Base):
@@ -31,6 +32,7 @@ class ChainRun(Base):
         ForeignKey("chain_approval_requests.id"), nullable=True
     )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    audit_trail: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # list of {node_id, label, type, output_preview, status, usage}
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
@@ -43,4 +45,7 @@ class ChainRun(Base):
     chain: Mapped["AgentChain"] = relationship("AgentChain", back_populates="runs")
     approval: Mapped["ChainApprovalRequest | None"] = relationship(
         "ChainApprovalRequest", back_populates="chain_run", foreign_keys=[approval_id]
+    )
+    share_links: Mapped[list["RunShareLink"]] = relationship(
+        "RunShareLink", back_populates="run", cascade="all, delete-orphan"
     )

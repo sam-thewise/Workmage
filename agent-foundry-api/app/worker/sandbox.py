@@ -54,8 +54,11 @@ def run_agent_in_sandbox(
     timeout_sec: int = DEFAULT_TIMEOUT,
     input_parts: list[dict] | None = None,
     github_token: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[str, dict | None]:
-    """Run agent in Docker sandbox. Uses shared volume (accessible by host/daemon). Returns (content, usage_dict)."""
+    """Run agent in Docker sandbox. Uses shared volume (accessible by host/daemon). Returns (content, usage_dict).
+    extra_env: workspace/chain secrets merged into container environment (key names as env var names).
+    """
     job_id = str(uuid.uuid4())
     base_dir = Path(AGENT_RUNS_DIR) / job_id
     input_dir = base_dir / "input"
@@ -79,6 +82,10 @@ def run_agent_in_sandbox(
             "AGENT_INPUT": f"/agent-runs/{job_id}/input",
             "AGENT_OUTPUT": f"/agent-runs/{job_id}/output",
         }
+        if extra_env:
+            for k, v in extra_env.items():
+                if k and isinstance(v, str):
+                    env[k] = v
         if not api_key:
             if settings.OPENAI_API_KEY:
                 env["OPENAI_API_KEY"] = settings.OPENAI_API_KEY

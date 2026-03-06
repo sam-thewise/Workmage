@@ -92,6 +92,29 @@ def process_mint_payments_for_network(self, network: str = "avalanche") -> dict:
     return _process(network)
 
 
+AUDIT_PREVIEW_MAX = 500
+
+
+def _audit_entry(
+    node_id: str,
+    label: str,
+    node_type: str,
+    status: str,
+    output_preview: str | None = None,
+    usage: dict | None = None,
+    duration_ms: int | None = None,
+) -> dict:
+    """Build one audit trail entry (serializable for JSONB)."""
+    entry = {"node_id": node_id, "label": label, "type": node_type, "status": status}
+    if output_preview is not None:
+        entry["output_preview"] = output_preview[:AUDIT_PREVIEW_MAX] if output_preview else ""
+    if usage:
+        entry["usage"] = dict(usage)
+    if duration_ms is not None:
+        entry["duration_ms"] = duration_ms
+    return entry
+
+
 def _update_chain_run(
     run_id: int | None,
     status: str,
@@ -100,6 +123,7 @@ def _update_chain_run(
     usage: dict | None = None,
     approval_id: int | None = None,
     summary: str | None = None,
+    audit_trail: list | None = None,
 ) -> None:
     """Persist chain run outcome so the run is never stuck in queued/resuming."""
     if run_id is None:
@@ -124,6 +148,8 @@ def _update_chain_run(
                 run.approval_id = approval_id
             if summary is not None:
                 run.summary = summary
+            if audit_trail is not None:
+                run.audit_trail = audit_trail
             db.commit()
 
 
@@ -166,6 +192,28 @@ def _get_saved_content(db, user_id: int, slug: str) -> str:
     return ""
 
 
+def _get_workspace_secrets_for_chain(db, workspace_id: int | None, chain_id: int | None) -> dict[str, str]:
+    """Load workspace (and optional per-chain) secrets, decrypt, return key_name -> value for sandbox env."""
+    if workspace_id is None:
+        return {}
+    from sqlalchemy import select
+    from app.models.workspace_secret import WorkspaceSecret
+    from app.core.key_encryption import decrypt_api_key
+    q = select(WorkspaceSecret).where(WorkspaceSecret.workspace_id == workspace_id)
+    # Workspace-level (chain_id IS NULL) and optionally this chain's secrets
+    q = q.where(
+        (WorkspaceSecret.chain_id.is_(None)) | (WorkspaceSecret.chain_id == chain_id)
+    )
+    rows = db.execute(q).scalars().all()
+    out: dict[str, str] = {}
+    for s in rows:
+        try:
+            out[s.key_name] = decrypt_api_key(s.encrypted_value)
+        except Exception:
+            logger.warning("Failed to decrypt workspace secret key_name=%s", s.key_name, exc_info=True)
+    return out
+
+
 @celery_app.task(bind=True, base=ChainRunTask)
 def run_chain_task(
     self,
@@ -194,6 +242,9 @@ def run_chain_task(
     with Session() as db:
         chain_result = db.execute(select(AgentChain).where(AgentChain.id == chain_id))
         chain = chain_result.scalar_one_or_none()
+        workspace_secrets = _get_workspace_secrets_for_chain(
+            db, getattr(chain, "workspace_id", None), chain_id
+        ) if chain else {}
     if not chain:
         _update_chain_run(run_id, "error", error="Chain not found")
         return {"status": "error", "content": "Chain not found"}
@@ -233,6 +284,7 @@ def run_chain_task(
                 incoming[tgt].append(src)
         outputs: dict[str, str] = {}
         agg_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        audit_trail: list[dict] = []
         run_owner = run_owner_id or buyer_id
         for nid in order:
             node = setup_nodes.get(nid)
@@ -250,6 +302,8 @@ def run_chain_task(
                             outputs[nid] = _get_saved_content(db, run_owner, slug_name)
                     else:
                         outputs[nid] = ""
+                slug_label = node.get("slug") or node.get("label") or nid
+                audit_trail.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
                 continue
             agent_id = node.get("agent_id")
             if agent_id is None:
@@ -260,6 +314,7 @@ def run_chain_task(
             with Session() as db:
                 agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
             if not agent:
+                _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found", audit_trail=audit_trail)
                 return {"status": "error", "content": f"Agent {agent_id} not found"}
             preds = incoming.get(nid, [])
             user_input_val = user_input if not preds else ""
@@ -271,14 +326,17 @@ def run_chain_task(
                 len(input_parts),
                 sorted(outputs.keys()),
             )
+            label = (agent.manifest or {}).get("name") or f"Agent #{agent_id}"
             _log_prompt_debug(
                 phase=f"chain_setup_node:{nid}",
                 task_name="run_chain_task",
                 model=model,
-                manifest_name=(agent.manifest or {}).get("name", f"Agent #{agent_id}"),
+                manifest_name=label,
                 user_input=user_input_val,
                 input_parts=input_parts if input_parts else None,
             )
+            import time
+            t0 = time.perf_counter()
             from app.worker.sandbox import run_agent_in_sandbox
             content, usage = run_agent_in_sandbox(
                 manifest=agent.manifest,
@@ -287,15 +345,19 @@ def run_chain_task(
                 api_key=api_key,
                 input_parts=input_parts if input_parts else None,
                 github_token=github_token,
+                extra_env=workspace_secrets,
             )
+            duration_ms = int((time.perf_counter() - t0) * 1000)
             if usage:
                 agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
                 agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
             if isinstance(content, str) and any(
                 x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
             ):
-                _update_chain_run(run_id, "error", error=content, usage=agg_usage)
+                audit_trail.append(_audit_entry(nid, label, "agent", "error", output_preview=content, usage=usage, duration_ms=duration_ms))
+                _update_chain_run(run_id, "error", error=content, usage=agg_usage, audit_trail=audit_trail)
                 return {"status": "error", "content": content, "usage": agg_usage}
+            audit_trail.append(_audit_entry(nid, label, "agent", "ok", output_preview=content or "", usage=usage, duration_ms=duration_ms))
             outputs[nid] = content or ""
             if run_owner and (content or "").strip():
                 with Session() as db:
@@ -308,7 +370,7 @@ def run_chain_task(
                     else:
                         db.add(SavedOutput(user_id=run_owner, slug=save_slug, content=(content or "").strip()))
                     db.commit()
-        _update_chain_run(run_id, "completed", content=f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", usage=agg_usage)
+        _update_chain_run(run_id, "completed", content=f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", usage=agg_usage, audit_trail=audit_trail)
         return {"status": "completed", "content": f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", "usage": agg_usage}
 
     main_node_ids = {
@@ -337,6 +399,7 @@ def run_chain_task(
                 agent_labels_by_id[a.id] = (a.manifest or {}).get("name") or f"Agent #{a.id}"
     outputs = {}
     agg_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    audit_trail_main: list[dict] = []
     run_owner = run_owner_id or buyer_id
 
     for nid in order:
@@ -354,6 +417,8 @@ def run_chain_task(
                         outputs[nid] = _get_saved_content(db, run_owner, slug_name)
                 else:
                     outputs[nid] = ""
+            slug_label = node.get("slug") or node.get("label") or nid
+            audit_trail_main.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
             continue
         if node.get("type") == "approval":
             preds = incoming.get(nid, [])
@@ -414,7 +479,9 @@ def run_chain_task(
                 db.commit()
                 db.refresh(approval)
                 approval_id = approval.id
-            _update_chain_run(run_id, "awaiting_approval", approval_id=approval_id, summary=summary, usage=agg_usage)
+            approval_label = (node.get("title") or node.get("message") or "Approval").strip() or "Approval"
+            audit_trail_main.append(_audit_entry(nid, approval_label, "approval", "reached", output_preview=summary))
+            _update_chain_run(run_id, "awaiting_approval", approval_id=approval_id, summary=summary, usage=agg_usage, audit_trail=audit_trail_main)
             return {
                 "status": "awaiting_approval",
                 "approval_id": approval_id,
@@ -428,8 +495,9 @@ def run_chain_task(
         with Session() as db:
             agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
         if not agent:
-            _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found")
+            _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found", audit_trail=audit_trail_main)
             return {"status": "error", "content": f"Agent {agent_id} not found"}
+        agent_label = agent_labels_by_id.get(agent_id, f"Agent #{agent_id}")
         preds = incoming.get(nid, [])
         user_input_val = user_input if not preds else ""
         input_parts = []
@@ -466,10 +534,12 @@ def run_chain_task(
             phase=f"chain_main_node:{nid}",
             task_name="run_chain_task",
             model=model,
-            manifest_name=(agent.manifest or {}).get("name", f"Agent #{agent_id}"),
+            manifest_name=agent_label,
             user_input=user_input_val,
             input_parts=input_parts if input_parts else None,
         )
+        import time
+        t0 = time.perf_counter()
         from app.worker.sandbox import run_agent_in_sandbox
         content, usage = run_agent_in_sandbox(
             manifest=agent.manifest,
@@ -478,15 +548,19 @@ def run_chain_task(
             api_key=api_key,
             input_parts=input_parts if input_parts else None,
             github_token=github_token,
+            extra_env=workspace_secrets,
         )
+        duration_ms = int((time.perf_counter() - t0) * 1000)
         if usage:
             agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
             agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
         if isinstance(content, str) and any(
             x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
         ):
-            _update_chain_run(run_id, "error", error=content, usage=agg_usage)
+            audit_trail_main.append(_audit_entry(nid, agent_label, "agent", "error", output_preview=content, usage=usage, duration_ms=duration_ms))
+            _update_chain_run(run_id, "error", error=content, usage=agg_usage, audit_trail=audit_trail_main)
             return {"status": "error", "content": content, "usage": agg_usage}
+        audit_trail_main.append(_audit_entry(nid, agent_label, "agent", "ok", output_preview=content or "", usage=usage, duration_ms=duration_ms))
         outputs[nid] = content or ""
 
     sink_nodes = [nid for nid in main_nodes if not any(e.get("source") == nid for e in main_edges)]
@@ -497,7 +571,7 @@ def run_chain_task(
             if sub:
                 sub.runs_used += 1
                 db.commit()
-    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
+    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage, audit_trail=audit_trail_main)
     return {"status": "completed", "content": final_content, "usage": agg_usage}
 
 
@@ -529,9 +603,20 @@ def resume_chain_task(
         approval = db.execute(
             select(ChainApprovalRequest).where(ChainApprovalRequest.id == approval_id)
         ).scalar_one_or_none()
+        chain = db.execute(select(AgentChain).where(AgentChain.id == approval.chain_id)).scalar_one_or_none() if approval else None
+        workspace_secrets = _get_workspace_secrets_for_chain(
+            db, getattr(chain, "workspace_id", None), approval.chain_id if approval else None
+        ) if chain else {}
     if not approval or approval.status != "pending":
         _update_chain_run(run_id, "error", error="Approval not found or already decided")
         return {"status": "error", "content": "Approval not found or already decided"}
+    audit_trail_resume: list[dict] = []
+    if run_id:
+        with Session() as db:
+            from app.models.chain_run import ChainRun
+            run_row = db.execute(select(ChainRun).where(ChainRun.id == run_id)).scalar_one_or_none()
+            if run_row and run_row.audit_trail:
+                audit_trail_resume = list(run_row.audit_trail)
     outputs = dict(approval.outputs)
     state = approval.state_snapshot or {}
     main_nodes = state.get("main_nodes", {})
@@ -541,12 +626,12 @@ def resume_chain_task(
     personality_text = personality_text or state.get("personality_text") or ""
     approval_node_id = approval.approval_node_id
     if approval_node_id not in order:
-        _update_chain_run(run_id, "error", error="Invalid approval state: node not in order")
+        _update_chain_run(run_id, "error", error="Invalid approval state: node not in order", audit_trail=audit_trail_resume)
         return {"status": "error", "content": "Invalid approval state: node not in order"}
     idx = order.index(approval_node_id)
     next_order = order[idx + 1:]
     if not next_order:
-        _update_chain_run(run_id, "completed", content="", usage={})
+        _update_chain_run(run_id, "completed", content="", usage={}, audit_trail=audit_trail_resume)
         return {"status": "completed", "content": "", "usage": {}}
     if next_stage_node_id:
         allowed = {next_stage_node_id}
@@ -582,6 +667,8 @@ def resume_chain_task(
                         outputs[nid] = _get_saved_content(db, run_owner, slug_name)
                 else:
                     outputs[nid] = ""
+            slug_label = node.get("slug") or node.get("label") or nid
+            audit_trail_resume.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
             continue
         if node.get("type") == "approval":
             continue
@@ -591,8 +678,9 @@ def resume_chain_task(
         with Session() as db:
             agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
         if not agent:
-            _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found")
+            _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found", audit_trail=audit_trail_resume)
             return {"status": "error", "content": f"Agent {agent_id} not found"}
+        agent_label = agent_labels_by_id.get(agent_id, f"Agent #{agent_id}")
         preds = incoming.get(nid, [])
         user_input_val = user_input if not preds else ""
         input_parts = []
@@ -625,6 +713,8 @@ def resume_chain_task(
                 "format": "text/plain",
                 "label": "Personality / voice",
             })
+        import time
+        t0 = time.perf_counter()
         from app.worker.sandbox import run_agent_in_sandbox
         content, usage = run_agent_in_sandbox(
             manifest=agent.manifest,
@@ -633,15 +723,19 @@ def resume_chain_task(
             api_key=api_key,
             input_parts=input_parts if input_parts else None,
             github_token=github_token,
+            extra_env=workspace_secrets,
         )
+        duration_ms = int((time.perf_counter() - t0) * 1000)
         if usage:
             agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
             agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
         if isinstance(content, str) and any(
             x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
         ):
-            _update_chain_run(run_id, "error", error=content, usage=agg_usage)
+            audit_trail_resume.append(_audit_entry(nid, agent_label, "agent", "error", output_preview=content, usage=usage, duration_ms=duration_ms))
+            _update_chain_run(run_id, "error", error=content, usage=agg_usage, audit_trail=audit_trail_resume)
             return {"status": "error", "content": content, "usage": agg_usage}
+        audit_trail_resume.append(_audit_entry(nid, agent_label, "agent", "ok", output_preview=content or "", usage=usage, duration_ms=duration_ms))
         outputs[nid] = content or ""
     next_sink_nodes = [nid for nid in next_order if not any(e.get("source") == nid for e in main_edges)]
     final_content = "\n\n---\n\n".join(outputs.get(nid, "") for nid in next_sink_nodes) if next_sink_nodes else "\n\n".join(outputs.get(nid, "") for nid in next_order if nid in outputs)
@@ -659,7 +753,7 @@ def resume_chain_task(
             approval.decided_at = datetime.utcnow()
             approval.decided_by_user_id = run_owner
             db.commit()
-    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
+    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage, audit_trail=audit_trail_resume)
     return {"status": "completed", "content": final_content, "usage": agg_usage}
 
 

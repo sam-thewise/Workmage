@@ -43,6 +43,7 @@ class ChainCreate(BaseModel):
     category: str | None = None
     tags: list[str] = Field(default_factory=list)
     definition: dict[str, Any]
+    workspace_id: int | None = None
 
 
 class ChainUpdate(BaseModel):

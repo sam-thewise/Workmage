@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.models.user_llm_key import UserLLMKey
     from app.models.user_github_token import UserGitHubToken
     from app.models.chain_run import ChainRun
+    from app.models.workspace_member import WorkspaceMember
 
 
 class UserRole(str, enum.Enum):
@@ -132,6 +133,10 @@ class User(Base):
     # Chain runs (persisted results and notifications)
     chain_runs: Mapped[list["ChainRun"]] = relationship(
         "ChainRun", back_populates="user", foreign_keys="ChainRun.user_id"
+    )
+    # Workspace memberships (role per workspace)
+    workspace_memberships: Mapped[list["WorkspaceMember"]] = relationship(
+        "WorkspaceMember", back_populates="user", foreign_keys="WorkspaceMember.user_id"
     )
 
 
