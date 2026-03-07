@@ -30,6 +30,7 @@ output: text/plain   input: text/plain   input: text/plain
 | `x-personality-builder-manifest.json` | text/plain | text/plain | Builds personality/voice profile from pasted tweets/handles using direct Twitter MCP tools; use in Setup lane and save to a slug, then feed slug to Content Writer |
 | `x-github-activity-manifest.json` | text/plain | text/plain | **GitHub scraper**: fetches repo commits, messages, optional file content; outputs a report for content creation. **Requires a GitHub token.** Chain into X Content Writer to support the import. |
 | `x-content-writer-github-manifest.json` | text/plain | text/plain, application/json | X Content Writer that **accepts** a repo activity report (from X GitHub Activity or pasted) plus trend report + beliefs; has scrape tool for URLs. Use after GitHub Activity in a chain. |
+| `contract-investigation-mcp-manifest.json` | text/plain | text/plain, application/json | **Contract investigation (Fuji)**: MCP tools for tx list by date range, caller analysis (new vs existing wallets), contract source, period metrics. Example: "How many new wallets on this date?" or "Visitors week X vs week Y." |
 
 ### GitHub Activity (scraper) and Content Writer import
 
@@ -56,6 +57,10 @@ The API now provides a dedicated MCP endpoint at `/api/v1/mcp/twitter` with tool
 - `search_x_posts(query, limit)`
 
 This endpoint is backed by the twitter-automation service. Configure the proxy endpoint (`TWITTER_MCP_URL`) and scraper account env vars (`TWITTER_AUTOMATION_*`) in your root `.env`.
+
+### Contract investigation MCP (Fuji)
+
+The API provides an MCP endpoint at `/api/v1/mcp/contract-investigation` with tools: `get_contract_transactions` (list tx for a contract in a date range), `get_contract_source` (verified source + ABI), `get_contract_callers_analysis` (per-caller stats: is_new, first_tx_on_chain, tx counts), and `get_contract_period_metrics` (total_tx, unique_callers_count, new_callers_count). Use `network: "fuji"` (default) or `"avalanche"`. Set `url` in the manifest to your API base + `/api/v1/mcp/contract-investigation`.
 
 ### Web scraping tool (token-efficient markdown)
 

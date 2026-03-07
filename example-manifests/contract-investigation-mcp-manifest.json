@@ -1,0 +1,23 @@
+{
+  "name": "Contract Investigation (Fuji)",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Agent with MCP tools for contract investigation on Fuji: list transactions by date range, analyze caller wallets (new vs existing, tenure on chain), get contract source, and period metrics. Use AI queries like 'how many new wallets interacted with this contract on this date?' or 'visitors week X vs week Y'.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-08T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain", "application/json"],
+  "skills": [
+    {"name": "blockchain/smart_contract_analysis", "id": 3002}
+  ],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "contract_investigation",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp/contract-investigation",
+      "timeout_sec": 30,
+      "retries": 2
+    }
+  ]
+}

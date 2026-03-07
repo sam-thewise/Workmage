@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     experts,
     llm,
     mcp,
+    mcp_contract_investigation,
     mcp_github,
     mcp_twitter,
     personality,
@@ -31,6 +32,7 @@ api_router.include_router(agents.router)
 api_router.include_router(mcp_github.router)
 api_router.include_router(mcp.router)
 api_router.include_router(mcp_twitter.router)
+api_router.include_router(mcp_contract_investigation.router)
 api_router.include_router(purchases.router)
 api_router.include_router(llm.router)
 api_router.include_router(runs.router)

@@ -8,9 +8,24 @@ import httpx
 from app.core.config import settings
 
 
-async def fetch_verified_source(contract_address: str) -> dict[str, Any]:
-    """Fetch verified contract source via Etherscan-compatible API."""
-    endpoint = settings.SNOWTRACE_API_URL.rstrip("/")
+def _snowtrace_base_url(network: str) -> str:
+    """Return Snowtrace/Routescan API base URL for the given network."""
+    if network == "fuji":
+        return settings.SNOWTRACE_FUJI_API_URL.rstrip("/")
+    return settings.SNOWTRACE_API_URL.rstrip("/")
+
+
+async def fetch_verified_source(
+    contract_address: str,
+    network: str = "avalanche",
+) -> dict[str, Any]:
+    """Fetch verified contract source via Etherscan-compatible API.
+
+    Args:
+        contract_address: Contract address (0x...).
+        network: "fuji" for Fuji testnet, "avalanche" for mainnet. Default mainnet.
+    """
+    endpoint = _snowtrace_base_url(network)
     params = {
         "module": "contract",
         "action": "getsourcecode",
