@@ -28,6 +28,7 @@ from app.db.session import get_db
 from app.models.agent import Agent, AgentStatus
 from app.models.chain import AgentChain, ChainStatus
 from app.models.chain_approval import ChainApprovalRequest
+from app.models.agent_run import AgentRun
 from app.models.chain_run import ChainRun
 from app.models.purchase import Purchase
 from app.models.run_share_link import RunShareLink
@@ -140,6 +141,7 @@ def _chain_to_dict(chain: AgentChain) -> dict:
         "status": chain.status,
         "approval_status": chain.approval_status,
         "category": chain.category,
+        "slug": getattr(chain, "slug", None),
         "tags": chain.tags or [],
         "definition": chain.definition,
         "rejection_reason": chain.rejection_reason,
@@ -174,6 +176,63 @@ async def list_marketplace_chains(
             "status": c.status,
             "approval_status": c.approval_status,
             "category": c.category,
+            "slug": getattr(c, "slug", None),
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+        }
+        for c in chains
+    ]
+
+
+@router.get("/runnable", response_model=list[ChainListResponse])
+async def list_runnable_chains(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List chains the user can run (own, workspace, or purchased). For Create report / comparison flow."""
+    chain_ids = set()
+    q = select(AgentChain.id).where(
+        (AgentChain.expert_id == user.id) | (AgentChain.buyer_id == user.id)
+    )
+    for row in (await db.execute(q)).all():
+        chain_ids.add(row[0])
+    ws_run = await db.execute(
+        select(WorkspaceMember.workspace_id).where(
+            WorkspaceMember.user_id == user.id,
+            WorkspaceMember.role.in_(["owner", "admin", "member"]),
+        )
+    )
+    ws_ids = [r[0] for r in ws_run.all()]
+    if ws_ids:
+        q2 = select(AgentChain.id).where(AgentChain.workspace_id.in_(ws_ids))
+        for row in (await db.execute(q2)).all():
+            chain_ids.add(row[0])
+    purch = await db.execute(
+        select(Purchase.chain_id).where(
+            Purchase.buyer_id == user.id,
+            Purchase.chain_id.isnot(None),
+        )
+    )
+    for row in purch.all():
+        if row[0]:
+            chain_ids.add(row[0])
+    if not chain_ids:
+        return []
+    result = await db.execute(
+        select(AgentChain).where(AgentChain.id.in_(chain_ids)).order_by(AgentChain.updated_at.desc())
+    )
+    all_chains = result.scalars().all()
+    chains = [c for c in all_chains if await _has_chain_run_access(db, c, user)]
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "description": c.description,
+            "price_cents": c.price_cents,
+            "status": c.status,
+            "approval_status": c.approval_status,
+            "category": c.category,
+            "slug": getattr(c, "slug", None),
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "updated_at": c.updated_at.isoformat() if c.updated_at else None,
         }
@@ -219,6 +278,7 @@ async def list_my_chains(
             "status": c.status,
             "approval_status": c.approval_status,
             "category": c.category,
+            "slug": getattr(c, "slug", None),
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "updated_at": c.updated_at.isoformat() if c.updated_at else None,
         }
@@ -273,6 +333,7 @@ async def create_chain(
         status=ChainStatus.DRAFT.value,
         category=payload.category,
         tags=payload.tags,
+        slug=payload.slug or None,
         approval_status="draft",
     )
     db.add(chain)
@@ -660,6 +721,8 @@ async def update_chain(
         chain.category = payload.category
     if payload.tags is not None:
         chain.tags = payload.tags
+    if payload.slug is not None:
+        chain.slug = payload.slug or None
 
     if chain.status == ChainStatus.REJECTED.value:
         chain.approval_status = "draft"
@@ -818,6 +881,34 @@ async def run_chain(
     await db.commit()
     await db.refresh(run)
 
+    input_run_refs_valid = None
+    if payload.input_run_refs:
+        refs_valid = []
+        for ref in payload.input_run_refs:
+            if ref.source == "chain":
+                cr = (await db.execute(select(ChainRun, AgentChain.workspace_id).where(
+                    ChainRun.id == ref.run_id
+                ).join(AgentChain, ChainRun.chain_id == AgentChain.id))).one_or_none()
+                if not cr:
+                    raise HTTPException(400, f"Chain run {ref.run_id} not found")
+                run_row, ws_id = cr[0], cr[1]
+                is_owner = run_row.user_id == user.id
+                member = await get_workspace_member(db, ws_id, user.id) if ws_id else None
+                can_view = is_owner or (member and (can_view_runs(member.role) or can_view_outputs_only(member.role)))
+                if not can_view:
+                    raise HTTPException(403, f"Cannot use chain run {ref.run_id}")
+                refs_valid.append({"source": "chain", "run_id": ref.run_id})
+            elif ref.source == "agent":
+                ar = (await db.execute(select(AgentRun).where(AgentRun.id == ref.run_id))).scalar_one_or_none()
+                if not ar:
+                    raise HTTPException(400, f"Agent run {ref.run_id} not found")
+                if ar.user_id != user.id:
+                    raise HTTPException(403, f"Cannot use agent run {ref.run_id}")
+                refs_valid.append({"source": "agent", "run_id": ref.run_id})
+            else:
+                raise HTTPException(400, f"Invalid run source: {ref.source}")
+        input_run_refs_valid = refs_valid
+
     job_id = str(uuid4())
     task = run_chain_task.delay(
         chain_id=chain_id,
@@ -830,6 +921,7 @@ async def run_chain(
         run_owner_id=user.id,
         github_token=github_token,
         run_id=run.id,
+        input_run_refs=input_run_refs_valid,
     )
     run.job_id = job_id
     await db.commit()

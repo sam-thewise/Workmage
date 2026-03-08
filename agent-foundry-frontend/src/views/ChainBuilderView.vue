@@ -16,6 +16,7 @@
       <div class="chain-meta-row">
         <v-text-field v-model="chainDescription" placeholder="AI Team description" density="compact" hide-details class="chain-desc-input" />
         <v-text-field v-model="chainTagsText" placeholder="Tags (e.g. sales, research)" density="compact" hide-details class="chain-tags-input" />
+        <v-text-field v-model="chainSlug" placeholder="Slug (e.g. contract-investigation-fuji, for wizard)" density="compact" hide-details class="chain-slug-input" />
       </div>
     </div>
     <div class="builder-layout">
@@ -167,6 +168,7 @@ const chainDescription = ref('')
 const chainPriceCents = ref(0)
 const chainCategory = ref('')
 const chainTagsText = ref('')
+const chainSlug = ref('')
 const chainStatus = ref('draft')
 const rejectionReason = ref('')
 const availableAgents = ref([])
@@ -254,6 +256,7 @@ async function loadChain() {
     chainPriceCents.value = data.price_cents || 0
     chainCategory.value = data.category || ''
     chainTagsText.value = (data.tags || []).join(', ')
+    chainSlug.value = data.slug || ''
     chainStatus.value = data.status || 'draft'
     rejectionReason.value = data.rejection_reason || ''
     const defn = data.definition || {}
@@ -525,6 +528,7 @@ async function saveChain() {
         price_cents: Math.max(0, Number(chainPriceCents.value) || 0),
         category: chainCategory.value || null,
         tags: chainTagsText.value ? chainTagsText.value.split(',').map((t) => t.trim()).filter(Boolean) : [],
+        slug: chainSlug.value?.trim() || null,
         definition: defn,
       })
     } else {
@@ -535,6 +539,7 @@ async function saveChain() {
         price_cents: Math.max(0, Number(chainPriceCents.value) || 0),
         category: chainCategory.value || null,
         tags: chainTagsText.value ? chainTagsText.value.split(',').map((t) => t.trim()).filter(Boolean) : [],
+        slug: chainSlug.value?.trim() || null,
         definition: defn,
         workspace_id: workspaceStore.currentWorkspaceId || undefined,
       })

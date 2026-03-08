@@ -153,6 +153,35 @@ def _update_chain_run(
             db.commit()
 
 
+def _update_agent_run(
+    run_id: int | None,
+    status: str,
+    content: str | None = None,
+    error: str | None = None,
+    usage: dict | None = None,
+) -> None:
+    """Persist agent run outcome so the run is never stuck in queued."""
+    if run_id is None:
+        return
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings
+    from app.models.agent_run import AgentRun
+    engine = create_engine(settings.DATABASE_SYNC_URL)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    with Session() as db:
+        run = db.execute(select(AgentRun).where(AgentRun.id == run_id)).scalar_one_or_none()
+        if run:
+            run.status = status
+            if content is not None:
+                run.content = content
+            if error is not None:
+                run.error = error
+            if usage is not None:
+                run.usage = usage
+            db.commit()
+
+
 def _topological_order(nodes: list[dict], edges: list[dict]) -> list[str]:
     """Return node IDs in topological order. Entry nodes first."""
     node_ids = {n["id"] for n in nodes if n.get("id")}
@@ -214,6 +243,39 @@ def _get_workspace_secrets_for_chain(db, workspace_id: int | None, chain_id: int
     return out
 
 
+def _resolve_input_run_refs(db, input_run_refs: list[dict] | None) -> list[dict]:
+    """Load content for each input run ref. Returns list of {content, label} for input_parts."""
+    if not input_run_refs:
+        return []
+    from sqlalchemy import select
+    from app.models.chain_run import ChainRun
+    from app.models.agent_run import AgentRun
+
+    parts = []
+    for ref in input_run_refs:
+        source = ref.get("source")
+        rid = ref.get("run_id")
+        if not source or rid is None:
+            continue
+        label = ""
+        content = ""
+        if source == "chain":
+            row = db.execute(select(ChainRun).where(ChainRun.id == rid)).scalar_one_or_none()
+            if row:
+                content = (row.content or "").strip()
+                created = row.created_at.strftime("%Y-%m-%d") if row.created_at else ""
+                label = f"Run #{rid} (chain, {created})"
+        elif source == "agent":
+            row = db.execute(select(AgentRun).where(AgentRun.id == rid)).scalar_one_or_none()
+            if row:
+                content = (row.content or row.error or "").strip()
+                created = row.created_at.strftime("%Y-%m-%d") if row.created_at else ""
+                label = f"Run #{rid} (agent, {created})"
+        if content or label:
+            parts.append({"content": content, "format": "text/plain", "label": label})
+    return parts
+
+
 @celery_app.task(bind=True, base=ChainRunTask)
 def run_chain_task(
     self,
@@ -227,6 +289,7 @@ def run_chain_task(
     run_owner_id: int | None = None,
     github_token: str | None = None,
     run_id: int | None = None,
+    input_run_refs: list[dict] | None = None,
 ) -> dict:
     """Execute chain: run_type='setup' runs only setup-lane nodes and saves to slugs; else runs main lane (slug nodes contribute saved content)."""
     from sqlalchemy import create_engine, select
@@ -402,6 +465,11 @@ def run_chain_task(
     audit_trail_main: list[dict] = []
     run_owner = run_owner_id or buyer_id
 
+    input_run_parts: list[dict] = []
+    if input_run_refs:
+        with Session() as db:
+            input_run_parts = _resolve_input_run_refs(db, input_run_refs)
+
     for nid in order:
         node = main_nodes.get(nid)
         if not node:
@@ -501,6 +569,8 @@ def run_chain_task(
         preds = incoming.get(nid, [])
         user_input_val = user_input if not preds else ""
         input_parts = []
+        if not preds and input_run_parts:
+            input_parts.extend(input_run_parts)
         for p in preds:
             if p not in outputs:
                 continue
@@ -790,8 +860,9 @@ def run_agent_task(
     api_key: str | None,
     buyer_id: int | None = None,
     github_token: str | None = None,
+    run_id: int | None = None,
 ) -> dict:
-    """Execute agent in Docker sandbox. Increment runs_used if platform (buyer_id set)."""
+    """Execute agent in Docker sandbox. Increment runs_used if platform (buyer_id set). Persists result to agent_runs."""
     from sqlalchemy import create_engine, select
     from sqlalchemy.orm import sessionmaker
     from app.core.config import settings
@@ -804,6 +875,7 @@ def run_agent_task(
         result = db.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
     if not agent:
+        _update_agent_run(run_id, "error", error="Agent not found")
         return {"status": "error", "content": "Agent not found"}
     _log_prompt_debug(
         phase="single_agent",
@@ -813,21 +885,27 @@ def run_agent_task(
         user_input=user_input,
         input_parts=None,
     )
-    from app.worker.sandbox import run_agent_in_sandbox
-    content, usage = run_agent_in_sandbox(
-        manifest=agent.manifest,
-        user_input=user_input,
-        model=model,
-        api_key=api_key,
-        github_token=github_token,
-    )
-    if buyer_id:
-        with Session() as db:
-            sub = db.execute(select(Subscription).where(Subscription.buyer_id == buyer_id)).scalar_one_or_none()
-            if sub:
-                sub.runs_used += 1
-                db.commit()
-    return {"status": "completed", "content": content, "usage": usage}
+    try:
+        from app.worker.sandbox import run_agent_in_sandbox
+        content, usage = run_agent_in_sandbox(
+            manifest=agent.manifest,
+            user_input=user_input,
+            model=model,
+            api_key=api_key,
+            github_token=github_token,
+        )
+        if buyer_id:
+            with Session() as db:
+                sub = db.execute(select(Subscription).where(Subscription.buyer_id == buyer_id)).scalar_one_or_none()
+                if sub:
+                    sub.runs_used += 1
+                    db.commit()
+        _update_agent_run(run_id, "completed", content=content, usage=usage)
+        return {"status": "completed", "content": content, "usage": usage}
+    except Exception as e:
+        err_msg = str(e)
+        _update_agent_run(run_id, "error", error=err_msg)
+        return {"status": "error", "content": None, "error": err_msg}
 
 
 @celery_app.task(bind=True)

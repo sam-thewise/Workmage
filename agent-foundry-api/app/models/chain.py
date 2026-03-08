@@ -46,6 +46,7 @@ class AgentChain(Base):
         String(50), default=ChainStatus.DRAFT.value, nullable=False
     )
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
     tags: Mapped[list | None] = mapped_column(JSONB, default=list, nullable=True)
     approval_status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

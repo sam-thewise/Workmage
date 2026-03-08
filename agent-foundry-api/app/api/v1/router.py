@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     action_infra,
     admin,
     auth,
+    wizard,
     agents,
     chains,
     content_drafts,
@@ -42,4 +43,5 @@ api_router.include_router(share.router)
 api_router.include_router(content_drafts.router)
 api_router.include_router(personality.router)
 api_router.include_router(saved_outputs.router)
+api_router.include_router(wizard.router)
 api_router.include_router(action_infra.router)

@@ -12,6 +12,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.purchase import Purchase
+    from app.models.agent_run import AgentRun
 
 
 class AgentStatus(str, enum.Enum):
@@ -60,4 +61,7 @@ class Agent(Base):
     )
     purchases: Mapped[list["Purchase"]] = relationship(
         "Purchase", back_populates="agent"
+    )
+    agent_runs: Mapped[list["AgentRun"]] = relationship(
+        "AgentRun", back_populates="agent", foreign_keys="AgentRun.agent_id"
     )

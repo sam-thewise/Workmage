@@ -1,7 +1,12 @@
 <template>
   <div class="admin-panel mx-auto" style="max-width: 900px;">
-    <h1 class="text-h4 mb-2">Admin Panel</h1>
-    <v-chip :color="authStore.user?.role === 'admin' ? 'primary' : 'info'" size="small" class="mb-4">{{ authStore.user?.role }}</v-chip>
+    <div class="d-flex justify-space-between align-center flex-wrap gap-2 mb-4">
+      <div class="d-flex align-center gap-2">
+        <h1 class="text-h4 mb-0">Admin Panel</h1>
+        <v-chip :color="authStore.user?.role === 'admin' ? 'primary' : 'info'" size="small">{{ authStore.user?.role }}</v-chip>
+      </div>
+      <router-link v-if="authStore.user?.role === 'admin'" to="/admin/wizard" class="text-accent text-decoration-none">Wizard Use Cases</router-link>
+    </div>
 
     <v-tabs v-model="tab" class="mb-4">
       <v-tab value="pending">Pending AI Roles ({{ pendingCount }})</v-tab>

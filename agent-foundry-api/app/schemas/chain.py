@@ -44,6 +44,7 @@ class ChainCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     definition: dict[str, Any]
     workspace_id: int | None = None
+    slug: str | None = None  # for wizard use case lookup
 
 
 class ChainUpdate(BaseModel):
@@ -55,6 +56,7 @@ class ChainUpdate(BaseModel):
     category: str | None = None
     tags: list[str] | None = None
     definition: dict[str, Any] | None = None
+    slug: str | None = None
 
 
 class ChainListResponse(BaseModel):
@@ -67,6 +69,7 @@ class ChainListResponse(BaseModel):
     status: str
     approval_status: str | None = None
     category: str | None = None
+    slug: str | None = None
     created_at: str | None
     updated_at: str | None = None
 
@@ -81,6 +84,7 @@ class ChainResponse(BaseModel):
     status: str = "draft"
     approval_status: str | None = None
     category: str | None = None
+    slug: str | None = None
     tags: list[str] = Field(default_factory=list)
     rejection_reason: str | None = None
     definition: dict[str, Any]
@@ -89,9 +93,16 @@ class ChainResponse(BaseModel):
     agents: list[dict[str, Any]] | None = None
 
 
+class InputRunRef(BaseModel):
+    """Reference to a prior run (chain or agent) for use as input to a comparison chain."""
+    source: str  # "chain" | "agent"
+    run_id: int
+
+
 class ChainRunRequest(BaseModel):
     """Run chain request."""
     user_input: str
     model: str = "openai/gpt-5.2"
     use_byok: bool = False
     run_type: str | None = None  # "setup" for first-run lane only; default = main lane
+    input_run_refs: list[InputRunRef] | None = None  # prior runs to inject as input (e.g. for comparison)

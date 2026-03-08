@@ -1,0 +1,16 @@
+{
+  "name": "Trend Comparison",
+  "description": "Compares two or more prior run outputs and produces a report on trends and changes. Use from Run History: select 2+ completed runs, click Create report, choose this chain.",
+  "definition": {
+    "nodes": [
+      {
+        "id": "n1",
+        "agent_id": 1,
+        "position": { "x": 100, "y": 100 },
+        "lane": "main"
+      }
+    ],
+    "edges": []
+  },
+  "usage": "Replace agent_id with the ID of an agent that can process multiple text inputs (e.g. Report Writer or any agent that accepts text). When run via Create report with input_run_refs, the worker injects each prior run's content as input parts labeled 'Run #N (chain/agent, date)'. The agent receives these and should compare them per the user's instructions."
+}

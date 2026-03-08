@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/services/api'
 
 const routes = [
   { path: '/', component: () => import('@/views/HomeView.vue'), name: 'home' },
@@ -10,6 +11,7 @@ const routes = [
   { path: '/purchase/success', component: () => import('@/views/PurchaseSuccessView.vue'), name: 'purchase-success' },
   { path: '/run/:id?', component: () => import('@/views/RunAgentView.vue'), name: 'run-agent', meta: { requiresAuth: true } },
   { path: '/runs', component: () => import('@/views/RunHistoryView.vue'), name: 'runs', meta: { requiresAuth: true } },
+  { path: '/wizard', component: () => import('@/views/WizardView.vue'), name: 'wizard', meta: { requiresAuth: true } },
   { path: '/share/run/:token', component: () => import('@/views/SharedRunView.vue'), name: 'shared-run' },
   { path: '/chains', component: () => import('@/views/ChainsListView.vue'), name: 'chains', meta: { requiresAuth: true } },
   { path: '/chains/new', component: () => import('@/views/ChainBuilderView.vue'), name: 'chain-new', meta: { requiresAuth: true } },
@@ -41,6 +43,12 @@ const routes = [
     path: '/admin/accept-invite',
     component: () => import('@/views/AdminAcceptInviteView.vue'),
     name: 'admin-accept-invite',
+  },
+  {
+    path: '/admin/wizard',
+    component: () => import('@/views/AdminWizardUseCasesView.vue'),
+    name: 'admin-wizard',
+    meta: { requiresAuth: true, requiresAdminOrMod: true },
   },
   {
     path: '/dashboard',
@@ -79,6 +87,17 @@ router.beforeEach(async (to, _from, next) => {
       next()
     }
     return
+  }
+  if (to.name === 'dashboard' && authStore.isAuthenticated) {
+    try {
+      const { data } = await api.get('/wizard/status')
+      if (data?.runs_count === 0) {
+        next({ name: 'wizard' })
+        return
+      }
+    } catch (_) {
+      // ignore; continue to dashboard
+    }
   }
   next()
 })

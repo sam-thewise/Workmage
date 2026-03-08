@@ -40,6 +40,7 @@
         <v-btn v-if="authStore.user?.role === 'expert' || authStore.user?.role === 'admin'" variant="text" color="on-surface" to="/dashboard/agents">My AI Roles</v-btn>
         <v-btn v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'moderator'" variant="text" color="on-surface" to="/admin">Admin</v-btn>
         <v-btn variant="text" color="on-surface" to="/dashboard">Dashboard</v-btn>
+        <v-btn variant="text" color="on-surface" to="/wizard">Quick start wizard</v-btn>
         <v-btn variant="text" color="on-surface" to="/run">Run AI Role</v-btn>
         <v-btn variant="text" color="on-surface" to="/runs">Run history</v-btn>
         <v-btn variant="text" color="on-surface" to="/settings/keys">API Keys</v-btn>
