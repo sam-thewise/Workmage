@@ -48,7 +48,7 @@
     </v-form>
     <v-card v-if="result" variant="tonal" class="pa-4 mt-8">
       <h3 class="text-h6 mb-2">Result</h3>
-      <pre class="output text-body-2 pa-0 ma-0" style="white-space: pre-wrap; word-break: break-word;">{{ result.content || result.error || 'No output' }}</pre>
+      <FormattedOutput :content="result.content || result.error" fallback="No output" class="output" />
       <div v-if="result.usage" class="text-caption text-medium-emphasis mt-2">
         Tokens: {{ result.usage.prompt_tokens }} prompt, {{ result.usage.completion_tokens }} completion
       </div>
@@ -61,6 +61,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+import FormattedOutput from '@/components/FormattedOutput.vue'
 
 const modelOptions = [
   { title: 'OpenAI GPT-5.2', value: 'openai/gpt-5.2' },

@@ -113,7 +113,7 @@
         </v-card-title>
         <v-divider />
         <template v-if="selectedRunSource === 'agent'">
-          <pre class="detail-pre detail-pre-full">{{ selectedRun.content || selectedRun.error || 'No output' }}</pre>
+          <FormattedOutput :content="selectedRun.content || selectedRun.error" fallback="No output" class="detail-pre-full" />
           <p v-if="selectedRun.usage" class="text-caption mt-2">Usage: {{ selectedRun.usage.prompt_tokens ?? 0 }} prompt, {{ selectedRun.usage.completion_tokens ?? 0 }} completion</p>
         </template>
         <template v-else>
@@ -148,7 +148,7 @@
           <template v-if="detailMode === 'view'">
             <template v-if="selectedRun.status === 'awaiting_approval'">
               <p class="text-body-2 mb-2">Review the result below, then approve to continue or reject.</p>
-              <pre class="detail-pre detail-pre-full">{{ selectedRun.summary || 'No summary' }}</pre>
+              <FormattedOutput :content="selectedRun.summary" fallback="No summary" class="detail-pre-full" />
               <p v-if="selectedRun.next_stages?.length" class="text-caption mb-2">Next: {{ selectedRun.next_stages.map(s => s.label).join(', ') }}</p>
               <div class="d-flex gap-2 mt-3">
                 <v-btn color="primary" :loading="approving" @click="approveSelected(true)">Approve & continue</v-btn>
@@ -156,7 +156,7 @@
               </div>
             </template>
             <template v-else>
-              <pre class="detail-pre detail-pre-full">{{ selectedRun.content || selectedRun.error || 'No output' }}</pre>
+              <FormattedOutput :content="selectedRun.content || selectedRun.error" fallback="No output" class="detail-pre-full" />
               <p v-if="selectedRun.usage" class="text-caption mt-2">Usage: {{ selectedRun.usage.prompt_tokens ?? 0 }} prompt, {{ selectedRun.usage.completion_tokens ?? 0 }} completion</p>
             </template>
             <v-expansion-panels v-if="selectedRun.audit_trail?.length" class="mt-4" variant="accordion">
@@ -190,7 +190,7 @@
           <template v-else>
             <template v-if="selectedRun.status === 'awaiting_approval'">
               <p class="text-body-2 mb-2">Review the result below, then approve to continue or reject.</p>
-              <pre class="detail-pre">{{ selectedRun.summary || 'No summary' }}</pre>
+              <FormattedOutput :content="selectedRun.summary" fallback="No summary" />
               <p v-if="selectedRun.next_stages?.length" class="text-caption mb-2">Next: {{ selectedRun.next_stages.map(s => s.label).join(', ') }}</p>
               <div class="d-flex gap-2 mt-3">
                 <v-btn color="primary" :loading="approving" @click="approveSelected(true)">Approve & continue</v-btn>
@@ -198,7 +198,7 @@
               </div>
             </template>
             <template v-else>
-              <pre class="detail-pre">{{ selectedRun.content || selectedRun.error || 'No output' }}</pre>
+              <FormattedOutput :content="selectedRun.content || selectedRun.error" fallback="No output" />
               <p v-if="selectedRun.usage" class="text-caption mt-2">Usage: {{ selectedRun.usage.prompt_tokens ?? 0 }} prompt, {{ selectedRun.usage.completion_tokens ?? 0 }} completion</p>
             </template>
           </template>
@@ -213,6 +213,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
 import { useWorkspaceStore } from '@/stores/workspace'
+import FormattedOutput from '@/components/FormattedOutput.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -449,6 +450,7 @@ watch(workspaceId, () => {
 .detail-pre-full {
   max-height: 70vh;
   min-height: 200px;
+  overflow-y: auto;
 }
 .audit-trail {
   text-align: left;

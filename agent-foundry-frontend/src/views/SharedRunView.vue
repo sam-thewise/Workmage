@@ -9,7 +9,7 @@
       <p v-if="run.created_at" class="text-caption text-medium-emphasis mb-2">
         Run at {{ formatDate(run.created_at) }}
       </p>
-      <pre class="shared-run-content">{{ run.content || run.error || run.summary || 'No output' }}</pre>
+      <FormattedOutput :content="run.content || run.error || run.summary" fallback="No output" class="shared-run-content" />
       <p v-if="expired" class="text-caption text-error mt-2">This link has expired.</p>
     </v-card>
     <v-card v-else-if="error" class="pa-4">
@@ -24,6 +24,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
+import FormattedOutput from '@/components/FormattedOutput.vue'
 
 const route = useRoute()
 const run = ref(null)

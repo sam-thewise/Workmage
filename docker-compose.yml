@@ -113,10 +113,10 @@ services:
       - "5173:5173"
     volumes:
       - ./agent-foundry-frontend:/app
-      - /app/node_modules  # container-managed deps (Linux); populated by npm ci in container
+      - /app/node_modules  # container-managed deps (Linux); populated at startup
     environment:
       VITE_API_URL: http://localhost:8000/api/v1
-    command: npm run dev
+    command: sh -c "npm install && npm run dev"
     depends_on:
       - api
 

@@ -112,7 +112,7 @@
             <v-alert v-if="runResult.error" type="error" variant="tonal" class="mb-4">{{ runResult.error }}</v-alert>
             <v-card v-else variant="tonal" class="pa-4 mb-4">
               <h3 class="text-h6 mb-2">Result</h3>
-              <pre class="output text-body-2 pa-0 ma-0" style="white-space: pre-wrap; word-break: break-word;">{{ runResult.content || 'No output' }}</pre>
+              <FormattedOutput :content="runResult.content" fallback="No output" class="output" />
               <div v-if="runResult.usage" class="text-caption text-medium-emphasis mt-2">
                 Tokens: {{ runResult.usage.prompt_tokens }} prompt, {{ runResult.usage.completion_tokens }} completion
               </div>
@@ -131,6 +131,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
+import FormattedOutput from '@/components/FormattedOutput.vue'
 
 const router = useRouter()
 const step = ref(1)

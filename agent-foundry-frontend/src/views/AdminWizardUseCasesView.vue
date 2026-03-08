@@ -95,9 +95,10 @@
               placeholder="Select or type (e.g. contract-investigation-fuji)"
               variant="outlined"
               density="comfortable"
-              hint="Pick from your runnable chains (with slugs) or type a slug manually. Set slug in Chain Builder meta row."
+              hint="Pick from your runnable chains (with slugs). When Inject as = Slugs, parameters auto-fill from the selected chain."
               persistent-hint
               clearable
+              @update:model-value="onChainSlugChange"
             />
           </div>
 
@@ -147,114 +148,122 @@
               <div>
                 <h3 class="text-subtitle-1 font-weight-medium mb-1">Parameters</h3>
                 <p class="text-caption text-medium-emphasis mb-0">
-                  Each parameter becomes a field in the wizard. Founders fill these in before the chain runs.
+                  Each parameter becomes a field in the wizard. Select a chain with Inject as = Slugs to auto-fill from the chain, or add/edit below.
                 </p>
               </div>
-              <v-btn color="primary" variant="flat" size="small" @click="addParam">
+              <v-btn color="primary" variant="flat" size="small" @click="addParamAndEdit">
                 <v-icon start size="small">mdi-plus</v-icon>
                 Add parameter
               </v-btn>
             </div>
 
             <div v-if="!form.params?.length" class="text-medium-emphasis py-6 text-center" style="border: 1px dashed rgba(var(--v-border-color), 0.8); border-radius: 8px;">
-              No parameters. Click <strong>Add parameter</strong> above to add fields (e.g. contract address, start date).
+              No parameters. Select a chain (with Inject as = Slugs) to auto-fill, or click <strong>Add parameter</strong>.
             </div>
 
-            <v-card
-              v-for="(p, idx) in form.params"
-              :key="idx"
-              variant="outlined"
-              class="pa-4 mb-3"
-            >
-              <div class="d-flex justify-space-between align-center mb-3">
-                <span class="text-subtitle-2">Parameter {{ idx + 1 }}</span>
-                <v-btn icon size="small" variant="text" color="error" @click="removeParam(idx)">
-                  <v-icon size="small">mdi-delete</v-icon>
-                </v-btn>
+            <div v-else class="param-list">
+              <div
+                v-for="(p, idx) in form.params"
+                :key="idx"
+                class="param-list-item d-flex align-center justify-space-between flex-nowrap gap-2 py-2 px-3"
+              >
+                <div class="d-flex align-center flex-grow-1 min-width-0">
+                  <span class="text-body-2 font-weight-medium">{{ p.label || p.slug || 'Unnamed' }}</span>
+                  <v-chip v-if="p.slug" size="x-small" variant="outlined" class="ml-2">{{ p.slug }}</v-chip>
+                </div>
+                <div class="param-actions">
+                  <v-btn icon size="small" variant="text" title="Edit" @click="openParamEdit(idx)">
+                    <v-icon size="small">mdi-pencil</v-icon>
+                  </v-btn>
+                  <v-btn icon size="small" variant="text" color="error" title="Remove" @click="removeParam(idx)">
+                    <v-icon size="small">mdi-delete</v-icon>
+                  </v-btn>
+                </div>
               </div>
-              <div class="d-flex flex-column gap-3">
+            </div>
+          </div>
+
+          <!-- Parameter edit dialog -->
+          <v-dialog v-model="paramEditDialog" max-width="520" persistent>
+            <v-card v-if="paramEditDialog && paramEditPayload">
+              <v-card-title class="text-subtitle-1">Edit parameter</v-card-title>
+              <v-card-text class="pt-2">
                 <v-text-field
-                  v-model="p.slug"
+                  v-model="paramEditPayload.slug"
                   label="Slug"
                   placeholder="contract_address"
                   variant="outlined"
-                  density="compact"
-                  hint="Key for saved-outputs or user_input. Use lowercase, underscores."
+                  density="comfortable"
+                  hint="Key for saved-outputs. Use lowercase, underscores."
                   persistent-hint
-                  hide-details="auto"
+                  class="mb-3"
                 />
                 <v-text-field
-                  v-model="p.label"
+                  v-model="paramEditPayload.label"
                   label="Label"
                   placeholder="Contract address"
                   variant="outlined"
-                  density="compact"
-                  hint="Shown as the field label in the wizard form."
+                  density="comfortable"
+                  hint="Shown as the field label in the wizard."
                   persistent-hint
-                  hide-details="auto"
+                  class="mb-3"
                 />
                 <v-select
-                  v-model="p.type"
+                  v-model="paramEditPayload.type"
                   :items="paramTypeOptions"
                   item-title="title"
                   item-value="value"
                   label="Type"
                   variant="outlined"
-                  density="compact"
-                  hint="text = free text. date = date picker. select = dropdown."
-                  persistent-hint
-                  hide-details="auto"
+                  density="comfortable"
+                  class="mb-3"
                 />
                 <v-text-field
-                  v-model="p.placeholder"
+                  v-model="paramEditPayload.placeholder"
                   label="Placeholder"
                   placeholder="0x..."
                   variant="outlined"
-                  density="compact"
-                  hint="Placeholder text in the input (optional)."
-                  persistent-hint
-                  hide-details="auto"
+                  density="comfortable"
+                  class="mb-3"
                 />
                 <v-select
-                  v-model="p.validation"
+                  v-model="paramEditPayload.validation"
                   :items="validationOptions"
                   item-title="title"
                   item-value="value"
                   label="Validation"
                   variant="outlined"
-                  density="compact"
+                  density="comfortable"
                   clearable
-                  hint="Extra validation, e.g. ethereum_address for 0x... hex."
-                  persistent-hint
-                  hide-details="auto"
+                  class="mb-3"
                 />
                 <v-text-field
-                  v-model="p.default"
+                  v-model="paramEditPayload.default"
                   label="Default value"
-                  placeholder="fuji"
+                  placeholder="(optional)"
                   variant="outlined"
-                  density="compact"
-                  hint="Pre-filled value (optional). For select, use one of the options."
-                  persistent-hint
-                  hide-details="auto"
+                  density="comfortable"
+                  class="mb-3"
                 />
-                <div v-if="p.type === 'select'">
+                <div v-if="paramEditPayload.type === 'select'" class="mb-3">
                   <v-text-field
-                    :model-value="(p.options || []).join(', ')"
-                    label="Options"
+                    :model-value="(paramEditPayload.options || []).join(', ')"
+                    label="Options (comma-separated)"
                     placeholder="fuji, avalanche"
                     variant="outlined"
-                    density="compact"
-                    hint="Comma-separated list of choices for the dropdown."
-                    persistent-hint
-                    hide-details="auto"
-                    @update:model-value="(v) => updateParamOptions(idx, v)"
+                    density="comfortable"
+                    @update:model-value="(v) => { paramEditPayload.options = (v || '').split(',').map(s => s.trim()).filter(Boolean) }"
                   />
                 </div>
-                <v-checkbox v-model="p.required" label="Required" density="compact" hide-details color="primary" />
-              </div>
+                <v-checkbox v-model="paramEditPayload.required" label="Required" color="primary" hide-details />
+              </v-card-text>
+              <v-card-actions>
+                <v-spacer />
+                <v-btn variant="text" @click="paramEditDialog = false">Cancel</v-btn>
+                <v-btn color="primary" @click="saveParamEdit">Done</v-btn>
+              </v-card-actions>
             </v-card>
-          </div>
+          </v-dialog>
 
           <v-divider class="my-4" />
 
@@ -287,6 +296,15 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/services/api'
 
+/** Humanize slug for label, e.g. contract_address -> Contract address */
+function slugToLabel(s) {
+  if (!s || typeof s !== 'string') return ''
+  return s
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 const useCases = ref([])
 const chains = ref([])
 const chainsLoading = ref(false)
@@ -296,6 +314,10 @@ const editDialog = ref(false)
 const editingId = ref(null)
 const saveLoading = ref(false)
 const saveError = ref('')
+const chainSlugInjectSnapshot = ref({ chain_slug: '', inject_as: '' })
+const paramEditDialog = ref(false)
+const paramEditIndex = ref(null)
+const paramEditPayload = ref(null)
 
 const chainOptions = computed(() => {
   const withSlug = (chains.value || []).filter((c) => c.slug)
@@ -332,6 +354,24 @@ function injectLabel(v) {
   return o ? o.title.split(' — ')[0] : v
 }
 
+/** Normalize chain_slug from combobox (can be string or item object). */
+function normalizedChainSlug() {
+  const raw = form.value.chain_slug
+  if (raw == null) return ''
+  if (typeof raw === 'object' && raw !== null && 'value' in raw) return String(raw.value || '').trim()
+  return String(raw).trim()
+}
+
+function onChainSlugChange() {
+  const slug = normalizedChainSlug()
+  if (typeof form.value.chain_slug === 'object' && form.value.chain_slug !== null) {
+    form.value.chain_slug = slug
+  }
+  if (form.value.inject_as !== 'slugs') return
+  chainSlugInjectSnapshot.value = { chain_slug: slug, inject_as: form.value.inject_as }
+  syncParamsFromChain()
+}
+
 function addParam() {
   form.value.params = form.value.params || []
   form.value.params.push({
@@ -344,6 +384,50 @@ function addParam() {
     options: [],
     default: '',
   })
+}
+
+function addParamAndEdit() {
+  addParam()
+  openParamEdit(form.value.params.length - 1)
+}
+
+function openParamEdit(idx) {
+  const p = form.value.params?.[idx]
+  if (!p) return
+  paramEditIndex.value = idx
+  paramEditPayload.value = {
+    slug: p.slug || '',
+    label: p.label || '',
+    type: p.type || 'text',
+    required: !!p.required,
+    placeholder: p.placeholder || '',
+    validation: p.validation || '',
+    options: [...(p.options || [])],
+    default: p.default || '',
+  }
+  paramEditDialog.value = true
+}
+
+function saveParamEdit() {
+  const idx = paramEditIndex.value
+  const payload = paramEditPayload.value
+  if (idx == null || idx < 0 || !form.value.params?.[idx] || !payload) {
+    paramEditDialog.value = false
+    return
+  }
+  form.value.params[idx] = {
+    slug: payload.slug?.trim() || '',
+    label: payload.label?.trim() || '',
+    type: payload.type || 'text',
+    required: !!payload.required,
+    placeholder: payload.placeholder?.trim() || '',
+    validation: (payload.validation && String(payload.validation).trim()) ? payload.validation : '',
+    options: payload.type === 'select' ? (payload.options || []) : [],
+    default: payload.default?.trim() || '',
+  }
+  paramEditDialog.value = false
+  paramEditIndex.value = null
+  paramEditPayload.value = null
 }
 
 function removeParam(idx) {
@@ -382,6 +466,7 @@ function openCreateModal() {
     required_config: [],
     sort_order: 0,
   }
+  chainSlugInjectSnapshot.value = { chain_slug: '', inject_as: 'slugs' }
   saveError.value = ''
   editDialog.value = true
   loadChains()
@@ -408,9 +493,55 @@ function openEditModal(uc) {
     inject_as: uc.inject_as || 'slugs',
     sort_order: uc.sort_order ?? 0,
   }
+  chainSlugInjectSnapshot.value = { chain_slug: uc.chain_slug || '', inject_as: uc.inject_as || 'slugs' }
   saveError.value = ''
   editDialog.value = true
   loadChains()
+}
+
+/** Collect slug names from chain definition (slug nodes and setup save_to_slug). */
+function getSlugsFromDefinition(definition) {
+  const nodes = definition?.nodes || []
+  const slugs = new Set()
+  for (const n of nodes) {
+    if (n.type === 'slug' && n.slug) slugs.add(String(n.slug).trim())
+    if (n.save_to_slug) slugs.add(String(n.save_to_slug).trim())
+  }
+  return [...slugs].filter(Boolean)
+}
+
+async function syncParamsFromChain() {
+  const injectAs = form.value.inject_as
+  const chainSlug = normalizedChainSlug()
+  if (injectAs !== 'slugs') {
+    form.value.params = []
+    return
+  }
+  if (!chainSlug) {
+    form.value.params = []
+    return
+  }
+  const chain = (chains.value || []).find((c) => c.slug === chainSlug)
+  if (!chain?.id) {
+    return
+  }
+  try {
+    const { data } = await api.get(`/chains/${chain.id}`)
+    const defn = data?.definition || {}
+    const slugList = getSlugsFromDefinition(defn)
+    form.value.params = slugList.map((slug) => ({
+      slug,
+      label: slugToLabel(slug),
+      type: 'text',
+      required: false,
+      placeholder: '',
+      validation: '',
+      options: [],
+      default: '',
+    }))
+  } catch {
+    form.value.params = []
+  }
 }
 
 async function loadChains() {
@@ -422,6 +553,10 @@ async function loadChains() {
     chains.value = []
   } finally {
     chainsLoading.value = false
+    // Only auto-fill params from chain when creating a new use case; when editing, keep existing params
+    if (editDialog.value && editingId.value == null && form.value.inject_as === 'slugs' && normalizedChainSlug()) {
+      syncParamsFromChain()
+    }
   }
 }
 
@@ -444,6 +579,7 @@ async function saveUseCase() {
   try {
     const payload = {
       ...form.value,
+      chain_slug: normalizedChainSlug() || form.value.chain_slug,
       required_config: form.value.required_config || [],
       params: (form.value.params || []).map((p) => ({
         slug: p.slug?.trim() || '',
@@ -483,11 +619,36 @@ async function deleteUseCase(uc) {
   }
 }
 
+watch(
+  () => [normalizedChainSlug(), form.value.inject_as],
+  ([chainSlug, injectAs]) => {
+    if (!editDialog.value) return
+    const prev = chainSlugInjectSnapshot.value
+    const c = chainSlug || ''
+    const i = injectAs || ''
+    if (prev.chain_slug === c && prev.inject_as === i) return
+    chainSlugInjectSnapshot.value = { chain_slug: c, inject_as: i }
+    syncParamsFromChain()
+  }
+)
+
 onMounted(loadUseCases)
 </script>
 
 <style scoped>
 .form-section h3 {
   margin-bottom: 0.5rem;
+}
+.param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.param-list-item {
+  border: 1px solid rgba(var(--v-border-color), 0.5);
+  border-radius: 8px;
+}
+.param-actions {
+  flex-shrink: 0;
 }
 </style>
