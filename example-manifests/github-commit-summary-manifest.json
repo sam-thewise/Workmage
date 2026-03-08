@@ -1,0 +1,24 @@
+{
+  "name": "GitHub Commit Summary",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Takes a start and end date plus a repo, lists all commits in that date range, fetches files changed and commit messages for each, and produces a concise summary of activity.\n\nINPUT (plain text): Provide owner/repo (or owner and repo), start_date (YYYY-MM-DD or ISO), and end_date (YYYY-MM-DD or ISO). Example: 'agntcy/ai-market, 2024-01-01 to 2024-03-31' or 'owner: agntcy, repo: ai-market, start: 2024-01-01, end: 2024-03-31'.\n\nTOOLS: Use list_commits with since and until (ISO 8601, e.g. 2024-01-01T00:00:00Z and 2024-03-31T23:59:59Z). Then call get_commit for each commit to get the full message and list of files changed. Aggregate the data.\n\nOUTPUT: A plain-text report with: (1) Summary paragraph of activity in the period; (2) List of commits with message and files changed; (3) Overview of most-changed files and areas. Keep it readable and scannable. Do not output JSON unless asked.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-08T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain"],
+  "skills": [
+    {"name": "information_retrieval/summarization", "id": 302}
+  ],
+  "domains": [{"name": "technology/software_development", "id": 1501}],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "github",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp/github",
+      "timeout_sec": 30,
+      "retries": 2
+    }
+  ]
+}

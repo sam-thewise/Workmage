@@ -90,7 +90,7 @@ def _parse_owner_repo(args: dict[str, Any], owner_key: str = "owner", repo_key: 
 TOOLS_LIST: list[dict[str, Any]] = [
     {
         "name": "list_commits",
-        "description": "List commits for a repository. Returns commit sha, message, author, date for each. Pass owner and repo separately, or repo as 'owner/repo' (e.g. username/Workmage).",
+        "description": "List commits for a repository. Returns commit sha, message, author, date for each. Pass owner and repo separately, or repo as 'owner/repo' (e.g. username/Workmage). Supports date range via since and until (ISO 8601, e.g. 2024-01-01T00:00:00Z).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -98,6 +98,8 @@ TOOLS_LIST: list[dict[str, Any]] = [
                 "repo": {"type": "string", "description": "Repository name, or 'owner/repo' (e.g. username/Workmage)."},
                 "branch": {"type": "string", "description": "Branch name (e.g. main). Default: default branch."},
                 "per_page": {"type": "integer", "description": "Number of commits to return (max 100). Default 10."},
+                "since": {"type": "string", "description": "Only commits after this date (ISO 8601, e.g. 2024-01-01T00:00:00Z)."},
+                "until": {"type": "string", "description": "Only commits before this date (ISO 8601, e.g. 2024-12-31T23:59:59Z)."},
             },
             "required": ["repo"],
         },
@@ -138,11 +140,17 @@ def _handle_list_commits(token: str, args: dict[str, Any]) -> str:
     owner, repo = _parse_owner_repo(args)
     branch = (args.get("branch") or "").strip()
     per_page = min(100, max(1, int(args.get("per_page") or 10)))
+    since = (args.get("since") or "").strip()
+    until = (args.get("until") or "").strip()
     if not owner or not repo:
         return "repo is required (e.g. 'owner/repo' like username/Workmage, or owner and repo separately)"
     path = f"/repos/{owner}/{repo}/commits?per_page={per_page}"
     if branch:
         path += f"&sha={urllib.parse.quote(branch)}"
+    if since:
+        path += f"&since={urllib.parse.quote(since)}"
+    if until:
+        path += f"&until={urllib.parse.quote(until)}"
     try:
         data = _github_request(token, path)
     except urllib.error.HTTPError as e:

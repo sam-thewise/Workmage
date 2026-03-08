@@ -1,0 +1,16 @@
+{
+  "name": "Investor Report",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Produces a markdown investor report from pre-collected data. No tools—receives all input from other agents via saved outputs or injected slugs.\n\nEXPECTED INPUTS (from other agents/saved-outputs):\n- GitHub commit summaries (from GitHub Commit Summary agent)\n- Scraped blog content (from Web Summarizer or similar)\n- X.com post summaries for the account (from X/Twitter agent)\n- Scraped data from analytics platforms (traffic, engagement)\n- Numbers the user wants to track (MRR, users, etc.)\n\nINPUT FORMAT: Text segments labeled by source, e.g. '## GitHub Activity', '## Blog Content', '## X Posts', '## Analytics', '## Key Metrics'. The chain or wizard injects each slug's content into the prompt.\n\nOUTPUT: A well-structured markdown report for investors with executive summary, highlights by source, key metrics, and narrative sections. Use headings, bullets, and tables where appropriate. Do not output JSON unless asked.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-08T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain", "text/markdown"],
+  "skills": [
+    {"name": "natural_language_processing/natural_language_generation/text_summarization", "id": 201},
+    {"name": "natural_language_processing/natural_language_generation/text_generation", "id": 202}
+  ],
+  "domains": [{"name": "business/finance", "id": 1201}, {"name": "technology/software_development", "id": 1501}],
+  "modules": []
+}

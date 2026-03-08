@@ -34,6 +34,7 @@ class WizardUseCaseResponse(BaseModel):
     chain_id: int | None
     params: list[dict]
     inject_as: str
+    required_config: list[str]
     sort_order: int
 
 
@@ -44,6 +45,7 @@ class WizardUseCaseCreate(BaseModel):
     chain_slug: str = Field(..., min_length=1, max_length=120)
     params: list[dict] = Field(default_factory=list)
     inject_as: str = Field(default="slugs", pattern="^(slugs|user_input|run_history)$")
+    required_config: list[str] = Field(default_factory=list)
     sort_order: int = 0
 
 
@@ -53,6 +55,7 @@ class WizardUseCaseUpdate(BaseModel):
     chain_slug: str | None = Field(None, min_length=1, max_length=120)
     params: list[dict] | None = None
     inject_as: str | None = Field(None, pattern="^(slugs|user_input|run_history)$")
+    required_config: list[str] | None = None
     sort_order: int | None = None
 
 
@@ -60,6 +63,39 @@ def _slug_valid(slug: str) -> bool:
     if not slug or len(slug) > 120:
         return False
     return slug.replace("_", "").replace("-", "").isalnum()
+
+
+KNOWN_CONFIG_KEYS = frozenset({"github_token"})
+CONFIG_LABELS = {"github_token": "GitHub token", "llm_key": "LLM API key"}
+
+
+async def _check_config_status(db: AsyncSession, user_id: int, keys: list[str]) -> dict[str, bool]:
+    """Check which config keys the user has. Returns {key: has_config} for known keys."""
+    out: dict[str, bool] = {}
+    for k in keys:
+        if k not in KNOWN_CONFIG_KEYS:
+            out[k] = False
+            continue
+        if k == "github_token":
+            from sqlalchemy import select
+            from app.models.user_github_token import UserGitHubToken
+            r = await db.execute(select(UserGitHubToken).where(UserGitHubToken.user_id == user_id))
+            out[k] = r.scalar_one_or_none() is not None
+        else:
+            out[k] = False
+    return out
+
+
+@router.get("/config-status")
+async def get_config_status(
+    keys: str = "github_token",
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check whether the current user has the requested config (e.g. github_token). keys=github_token or comma-separated."""
+    key_list = [k.strip() for k in keys.split(",") if k.strip()]
+    status = await _check_config_status(db, user.id, key_list)
+    return status
 
 
 @router.get("/status")
@@ -111,6 +147,7 @@ async def list_use_cases(
                 chain_id=chain_id,
                 params=uc.params or [],
                 inject_as=uc.inject_as,
+                required_config=uc.required_config or [],
                 sort_order=uc.sort_order,
             )
         )
@@ -140,6 +177,7 @@ async def admin_list_use_cases(
             "chain_slug": r.chain_slug,
             "params": r.params or [],
             "inject_as": r.inject_as,
+            "required_config": getattr(r, "required_config", None) or [],
             "sort_order": r.sort_order,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
@@ -169,6 +207,7 @@ async def admin_create_use_case(
         chain_slug=payload.chain_slug,
         params=payload.params,
         inject_as=payload.inject_as,
+        required_config=payload.required_config or [],
         sort_order=payload.sort_order,
     )
     db.add(uc)
@@ -182,6 +221,7 @@ async def admin_create_use_case(
         "chain_slug": uc.chain_slug,
         "params": uc.params or [],
         "inject_as": uc.inject_as,
+        "required_config": getattr(uc, "required_config", None) or [],
         "sort_order": uc.sort_order,
         "created_at": uc.created_at.isoformat() if uc.created_at else None,
         "updated_at": uc.updated_at.isoformat() if uc.updated_at else None,
@@ -209,6 +249,7 @@ async def admin_get_use_case(
         "chain_slug": uc.chain_slug,
         "params": uc.params or [],
         "inject_as": uc.inject_as,
+        "required_config": getattr(uc, "required_config", None) or [],
         "sort_order": uc.sort_order,
         "created_at": uc.created_at.isoformat() if uc.created_at else None,
         "updated_at": uc.updated_at.isoformat() if uc.updated_at else None,
@@ -239,6 +280,8 @@ async def admin_update_use_case(
         uc.params = payload.params
     if payload.inject_as is not None:
         uc.inject_as = payload.inject_as
+    if payload.required_config is not None:
+        uc.required_config = payload.required_config
     if payload.sort_order is not None:
         uc.sort_order = payload.sort_order
     await db.commit()
@@ -251,6 +294,7 @@ async def admin_update_use_case(
         "chain_slug": uc.chain_slug,
         "params": uc.params or [],
         "inject_as": uc.inject_as,
+        "required_config": getattr(uc, "required_config", None) or [],
         "sort_order": uc.sort_order,
         "created_at": uc.created_at.isoformat() if uc.created_at else None,
         "updated_at": uc.updated_at.isoformat() if uc.updated_at else None,

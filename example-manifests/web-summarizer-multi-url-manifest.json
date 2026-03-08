@@ -1,0 +1,25 @@
+{
+  "name": "Web Summarizer (Multi-URL)",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Fetches and summarizes multiple web pages in one go. Use when you have several URLs and a purpose (e.g. for a report, for an investor brief, for a blog roundup).\n\nINPUT (plain text):\n- One or more URLs (one per line, or comma-separated).\n- Optional intention: state how the content will be used, e.g. \"for an investor report\", \"for a technical blog post\", \"for a competitive analysis\".\n\nExample: \"Summarise these for a report:\nhttps://example.com/page1\nhttps://example.com/page2\nIntention: for an investor report\"\n\nTOOLS: Use scrape_urls_as_markdown(urls, max_length_per_url?, intention?). Pass all URLs as a list and the user's intention if given. Do not call scrape_as_markdown in a loop; use the multi-URL tool once.\n\nOUTPUT: A single summary that (1) covers all fetched pages and (2) is written with the stated intention in mind (e.g. report-ready, investor-focused, scannable). Use clear sections per source if helpful. Plain text or markdown; no JSON unless asked.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-08T00:00:00Z",
+  "input_formats": ["text/plain", "text/url"],
+  "output_formats": ["text/plain", "text/markdown"],
+  "skills": [
+    {"name": "natural_language_processing/natural_language_generation/text_summarization", "id": 201},
+    {"name": "web/web_scraping", "id": 301}
+  ],
+  "domains": [{"name": "technology/web_technologies", "id": 1501}],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "scrape_markdown",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp",
+      "timeout_sec": 30,
+      "retries": 2
+    }
+  ]
+}

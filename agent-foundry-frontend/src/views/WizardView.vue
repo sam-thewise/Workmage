@@ -33,6 +33,25 @@
             <p class="text-body-2">This use case requires selecting prior runs. Use <router-link to="/runs" class="text-accent text-decoration-none">Run history</router-link> and click "Create report" to compare runs.</p>
           </div>
           <v-form v-else ref="paramsFormRef" @submit.prevent="submitAndRun" class="py-4">
+            <div v-if="selectedUseCase?.required_config?.length" class="mb-4 pa-4" style="border-radius: 8px; background: rgba(var(--v-theme-surface-variant), 0.3); border: 1px solid rgba(var(--v-border-color), 0.5);">
+              <h4 class="text-subtitle-1 mb-2">Required setup</h4>
+              <p class="text-caption text-medium-emphasis mb-3">This use case needs the following configured before you can run it.</p>
+              <div class="d-flex flex-column gap-2">
+                <div v-for="key in selectedUseCase.required_config" :key="key" class="d-flex align-center gap-2">
+                  <v-icon v-if="configStatus[key]" color="success" size="small">mdi-check-circle</v-icon>
+                  <v-icon v-else color="warning" size="small">mdi-alert-circle</v-icon>
+                  <span class="text-body-2">{{ configLabel(key) }}</span>
+                  <template v-if="!configStatus[key]">
+                    <v-btn size="small" variant="tonal" :to="configLink(key)" target="_blank" rel="noopener">Configure</v-btn>
+                  </template>
+                </div>
+              </div>
+              <p v-if="!hasRequiredConfig" class="text-caption text-warning mt-2 mb-0 d-flex align-center gap-2">
+                Add the required config above, then
+                <v-btn size="x-small" variant="text" @click="fetchConfigStatus(selectedUseCase.required_config)">Re-check</v-btn>
+                to update status.
+              </p>
+            </div>
             <div v-if="selectedUseCase?.params?.length" class="d-flex flex-column gap-3 mb-4">
               <template v-for="(p, idx) in selectedUseCase.params" :key="p.slug">
                 <v-text-field
@@ -77,7 +96,7 @@
             <v-switch v-model="runByok" label="Use my API key (BYOK)" color="primary" hide-details class="mb-3" />
             <div class="d-flex gap-2">
               <v-btn variant="outlined" @click="step = 1">Back</v-btn>
-              <v-btn type="submit" color="primary" :loading="running" :disabled="!canRun">
+              <v-btn type="submit" color="primary" :loading="running" :disabled="!canRun" :title="!hasRequiredConfig ? 'Configure required setup first' : ''">
                 {{ running ? 'Running...' : 'Run' }}
               </v-btn>
             </div>
@@ -124,7 +143,11 @@ const runModel = ref('openai/gpt-5.2')
 const runByok = ref(false)
 const running = ref(false)
 const runResult = ref(null)
+const configStatus = ref({})
 let pollInterval = null
+
+const CONFIG_LABELS = { github_token: 'GitHub token' }
+const CONFIG_LINKS = { github_token: '/settings/keys' }
 
 const modelOptions = [
   { title: 'OpenAI GPT-5.2', value: 'openai/gpt-5.2' },
@@ -133,16 +156,31 @@ const modelOptions = [
   { title: 'Anthropic Claude 3 Sonnet', value: 'anthropic/claude-3-sonnet-20240229' },
 ]
 
+const hasRequiredConfig = computed(() => {
+  const uc = selectedUseCase.value
+  const req = uc?.required_config || []
+  return req.every((k) => configStatus.value[k])
+})
+
 const canRun = computed(() => {
   const uc = selectedUseCase.value
   if (!uc?.chain_id) return false
   if (uc.inject_as === 'run_history') return false
+  if (!hasRequiredConfig.value) return false
   const params = uc.params || []
   for (const p of params) {
     if (p.required && !(paramValues.value[p.slug] || '').trim()) return false
   }
   return true
 })
+
+function configLabel(key) {
+  return CONFIG_LABELS[key] || key
+}
+
+function configLink(key) {
+  return CONFIG_LINKS[key] || '/settings/keys'
+}
 
 function paramRules(p) {
   const rules = []
@@ -164,6 +202,20 @@ function selectUseCase(uc) {
   const params = uc.params || []
   for (const p of params) {
     paramValues.value[p.slug] = p.default ?? ''
+  }
+  fetchConfigStatus(uc.required_config || [])
+}
+
+async function fetchConfigStatus(keys) {
+  if (!keys.length) {
+    configStatus.value = {}
+    return
+  }
+  try {
+    const { data } = await api.get('/wizard/config-status', { params: { keys: keys.join(',') } })
+    configStatus.value = data || {}
+  } catch {
+    configStatus.value = Object.fromEntries(keys.map((k) => [k, false]))
   }
 }
 
@@ -254,8 +306,14 @@ async function pollRun(jobId, runId) {
   }
 }
 
-watch(selectedUseCase, () => {
+watch(selectedUseCase, (uc) => {
   runResult.value = null
+  if (uc?.required_config?.length) fetchConfigStatus(uc.required_config)
+})
+watch(step, (s) => {
+  if (s === 2 && selectedUseCase.value?.required_config?.length) {
+    fetchConfigStatus(selectedUseCase.value.required_config)
+  }
 })
 
 onMounted(loadUseCases)

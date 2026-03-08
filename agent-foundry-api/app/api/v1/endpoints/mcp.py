@@ -1,7 +1,8 @@
 """MCP (Model Context Protocol) HTTP endpoint for agent tools.
 
-Exposes a single tool: scrape_as_markdown. Fetches a URL, extracts main content
-with trafilatura, returns markdown for token-efficient agent use.
+Exposes: scrape_as_markdown (single URL) and scrape_urls_as_markdown (multiple URLs
+with optional intention). Fetches pages with trafilatura, returns markdown for
+token-efficient agent use.
 """
 from __future__ import annotations
 
@@ -41,6 +42,31 @@ TOOL_INPUT_SCHEMA = {
         },
     },
     "required": ["url"],
+}
+
+TOOL_MULTI_NAME = "scrape_urls_as_markdown"
+TOOL_MULTI_DESCRIPTION = (
+    "Fetch multiple URLs and return their main content as markdown, one section per URL. "
+    "Use for reports or when summarizing several pages. Optional intention is included at the top for summarization context."
+)
+TOOL_MULTI_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "urls": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of URLs to fetch (http or https only).",
+        },
+        "max_length_per_url": {
+            "type": "integer",
+            "description": "Optional max characters per URL. Omit for full content per page.",
+        },
+        "intention": {
+            "type": "string",
+            "description": "Optional context for summarization, e.g. 'for an investor report' or 'for a technical blog post'.",
+        },
+    },
+    "required": ["urls"],
 }
 
 # Safe defaults: 15s timeout, 2MB max download
@@ -119,6 +145,49 @@ def _scrape_as_markdown(url: str, max_length: int | None = None, include_metadat
     return result
 
 
+def _scrape_urls_as_markdown(
+    urls: list[str],
+    max_length_per_url: int | None = None,
+    intention: str | None = None,
+) -> str:
+    """Fetch each URL and return combined markdown with optional intention header."""
+    if not urls or not isinstance(urls, list):
+        raise ValueError("urls must be a non-empty list of URLs")
+    seen: set[str] = set()
+    unique_urls: list[str] = []
+    for u in urls:
+        if not isinstance(u, str):
+            continue
+        u = u.strip()
+        if u and u not in seen:
+            seen.add(u)
+            unique_urls.append(u)
+    if not unique_urls:
+        raise ValueError("urls must contain at least one valid URL string")
+
+    parts: list[str] = []
+    if (intention or "").strip():
+        parts.append(f"Summarization intention: {intention.strip()}\n")
+
+    for i, url in enumerate(unique_urls, 1):
+        try:
+            _validate_url(url)
+        except ValueError as e:
+            parts.append(f"## Source [{i}] {url}\n\n[Skip: {e}]\n")
+            continue
+        try:
+            content = _scrape_as_markdown(
+                url,
+                max_length=max_length_per_url,
+                include_metadata=False,
+            )
+            parts.append(f"## Source [{i}] {url}\n\n{content}\n")
+        except Exception as e:
+            parts.append(f"## Source [{i}] {url}\n\n[Scrape failed: {e}]\n")
+
+    return "\n".join(parts)
+
+
 def _handle_tools_list() -> dict[str, Any]:
     return {
         "tools": [
@@ -126,7 +195,12 @@ def _handle_tools_list() -> dict[str, Any]:
                 "name": TOOL_NAME,
                 "description": TOOL_DESCRIPTION,
                 "inputSchema": TOOL_INPUT_SCHEMA,
-            }
+            },
+            {
+                "name": TOOL_MULTI_NAME,
+                "description": TOOL_MULTI_DESCRIPTION,
+                "inputSchema": TOOL_MULTI_INPUT_SCHEMA,
+            },
         ]
     }
 
@@ -134,22 +208,44 @@ def _handle_tools_list() -> dict[str, Any]:
 def _handle_tools_call(params: dict[str, Any]) -> dict[str, Any]:
     args = params.get("arguments") or {}
     name = params.get("name") or ""
-    if name != TOOL_NAME:
-        return {"content": [{"type": "text", "text": f"Unknown tool: {name}"}]}
-    url = args.get("url")
-    max_length = args.get("max_length")
-    include_metadata = bool(args.get("include_metadata", False))
-    try:
-        _validate_url(url)
-    except ValueError as e:
-        return {"content": [{"type": "text", "text": f"Invalid request: {e}"}]}
-    if max_length is not None and (not isinstance(max_length, int) or max_length <= 0):
-        max_length = DEFAULT_MAX_LENGTH
-    try:
-        text = _scrape_as_markdown(url, max_length=max_length, include_metadata=include_metadata)
-        return {"content": [{"type": "text", "text": text}]}
-    except Exception as e:
-        return {"content": [{"type": "text", "text": f"Scrape failed: {e}"}]}
+
+    if name == TOOL_NAME:
+        url = args.get("url")
+        max_length = args.get("max_length")
+        include_metadata = bool(args.get("include_metadata", False))
+        try:
+            _validate_url(url)
+        except ValueError as e:
+            return {"content": [{"type": "text", "text": f"Invalid request: {e}"}]}
+        if max_length is not None and (not isinstance(max_length, int) or max_length <= 0):
+            max_length = DEFAULT_MAX_LENGTH
+        try:
+            text = _scrape_as_markdown(url, max_length=max_length, include_metadata=include_metadata)
+            return {"content": [{"type": "text", "text": text}]}
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Scrape failed: {e}"}]}
+
+    if name == TOOL_MULTI_NAME:
+        urls = args.get("urls")
+        max_length_per_url = args.get("max_length_per_url")
+        intention = args.get("intention")
+        if not isinstance(urls, list):
+            return {"content": [{"type": "text", "text": "Invalid request: urls must be a list"}]}
+        if max_length_per_url is not None and (not isinstance(max_length_per_url, int) or max_length_per_url <= 0):
+            max_length_per_url = DEFAULT_MAX_LENGTH
+        try:
+            text = _scrape_urls_as_markdown(
+                urls,
+                max_length_per_url=max_length_per_url,
+                intention=intention if isinstance(intention, str) else None,
+            )
+            return {"content": [{"type": "text", "text": text}]}
+        except ValueError as e:
+            return {"content": [{"type": "text", "text": f"Invalid request: {e}"}]}
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Scrape failed: {e}"}]}
+
+    return {"content": [{"type": "text", "text": f"Unknown tool: {name}"}]}
 
 
 @router.post("")

@@ -29,6 +29,7 @@ output: text/plain   input: text/plain   input: text/plain
 | `x-reply-suggester-manifest.json` | text/plain | text/plain | Suggests 2–3 reply options for a single post |
 | `x-personality-builder-manifest.json` | text/plain | text/plain | Builds personality/voice profile from pasted tweets/handles using direct Twitter MCP tools; use in Setup lane and save to a slug, then feed slug to Content Writer |
 | `x-github-activity-manifest.json` | text/plain | text/plain | **GitHub scraper**: fetches repo commits, messages, optional file content; outputs a report for content creation. **Requires a GitHub token.** Chain into X Content Writer to support the import. |
+| `github-commit-summary-manifest.json` | text/plain | text/plain | **GitHub commit summary**: takes start and end dates plus repo, lists all commits in that range, fetches files changed and messages for each, outputs a summary of activity. **Requires a GitHub token.** |
 | `x-content-writer-github-manifest.json` | text/plain | text/plain, application/json | X Content Writer that **accepts** a repo activity report (from X GitHub Activity or pasted) plus trend report + beliefs; has scrape tool for URLs. Use after GitHub Activity in a chain. |
 | `contract-investigation-mcp-manifest.json` | text/plain | text/plain, application/json | **Contract investigation (Fuji)**: MCP tools for tx list by date range, caller analysis (new vs existing wallets), contract source, period metrics. Example: "How many new wallets on this date?" or "Visitors week X vs week Y." |
 

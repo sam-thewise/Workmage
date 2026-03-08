@@ -24,12 +24,14 @@ MAX_TIMELINE_LIMIT = 20
 TOOLS_LIST: list[dict[str, Any]] = [
     {
         "name": "fetch_x_profile_timeline",
-        "description": "Fetch recent posts from an X profile by handle. Default limit=10; use up to 20 for more samples (e.g. personality). Higher limits use more API quota.",
+        "description": "Fetch posts from an X profile by handle. Optional start_time and end_time (ISO 8601, e.g. 2024-01-01T00:00:00Z) filter posts by date. Without dates, returns most recent posts. Default limit=10; use up to 100 with date range for full coverage.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "handle": {"type": "string"},
-                "limit": {"type": "integer", "description": "Number of posts (default 10, max 20). Use 10 for trends, up to 20 for personality/voice."},
+                "handle": {"type": "string", "description": "X handle with or without @."},
+                "limit": {"type": "integer", "description": "Number of posts (default 10, max 20 without dates, max 100 with start_time/end_time)."},
+                "start_time": {"type": "string", "description": "ISO 8601 start of date range (e.g. 2024-01-01T00:00:00Z or 2024-01-01). Inclusive."},
+                "end_time": {"type": "string", "description": "ISO 8601 end of date range (e.g. 2024-03-31T23:59:59Z or 2024-03-31). Inclusive."},
             },
             "required": ["handle"],
         },
@@ -112,11 +114,13 @@ def _tweet_to_payload(tweet: dict[str, Any], includes: dict[str, Any] | None = N
     text = (tweet.get("text") or "").strip()
     username = author_handle.lstrip("@") if author_handle else ""
     url = f"https://x.com/{username}/status/{tid}" if tid and username else ""
+    created_at = tweet.get("created_at") or ""
     return {
         "id": tid,
         "author_handle": author_handle,
         "text": text,
         "url": url,
+        "created_at": created_at,
     }
 
 
@@ -153,11 +157,33 @@ def _check_sessions() -> dict[str, Any]:
         }
 
 
-def _fetch_profile_timeline(handle: str, limit: int = 10) -> dict[str, Any]:
+def _normalize_iso8601(value: str | None, is_end: bool = False) -> str | None:
+    """Convert YYYY-MM-DD to ISO 8601; pass through if already ISO 8601."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    # Already has T (full ISO 8601)
+    if "T" in v:
+        return v if v.endswith("Z") else f"{v}Z"
+    # YYYY-MM-DD -> append time
+    if len(v) == 10 and v[4] == "-" and v[7] == "-":
+        return f"{v}T23:59:59Z" if is_end else f"{v}T00:00:00Z"
+    return v
+
+
+def _fetch_profile_timeline(
+    handle: str,
+    limit: int | None = 10,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
     normalized = (handle or "").strip().lstrip("@")
     if not normalized:
         raise ValueError("handle is required")
-    limit = max(1, min(MAX_TIMELINE_LIMIT, int(limit or DEFAULT_TIMELINE_LIMIT)))
+
+    has_date_range = bool((start_time or "").strip()) or bool((end_time or "").strip())
+    max_limit = 100 if has_date_range else MAX_TIMELINE_LIMIT
+    limit = max(1, min(max_limit, int(limit or DEFAULT_TIMELINE_LIMIT)))
 
     with httpx.Client(timeout=30.0) as client:
         # Resolve username -> user id
@@ -174,18 +200,25 @@ def _fetch_profile_timeline(handle: str, limit: int = 10) -> dict[str, Any]:
         if not user_id:
             raise RuntimeError(f"User not found: @{normalized}")
 
-        # User timeline: API requires max_results between 5 and 100; we cap at MAX_TIMELINE_LIMIT
-        max_results = max(5, min(100, limit))
+        # User timeline: API supports start_time, end_time (ISO 8601)
+        req_params: dict[str, Any] = {
+            "max_results": max(5, min(100, limit)),
+            "exclude": "replies,retweets",
+            "tweet.fields": "created_at,text,author_id",
+            "expansions": "author_id",
+            "user.fields": "username",
+        }
+        st = _normalize_iso8601(start_time, is_end=False)
+        et = _normalize_iso8601(end_time, is_end=True)
+        if st:
+            req_params["start_time"] = st
+        if et:
+            req_params["end_time"] = et
+
         r2 = client.get(
             f"{API_BASE}/users/{user_id}/tweets",
             headers=_auth_headers(),
-            params={
-                "max_results": max_results,
-                "exclude": "replies,retweets",
-                "tweet.fields": "created_at,text,author_id",
-                "expansions": "author_id",
-                "user.fields": "username",
-            },
+            params=req_params,
         )
         if r2.status_code != 200:
             err = r2.json() if r2.content else {}
@@ -323,7 +356,12 @@ async def mcp_twitter(request: Request) -> JSONResponse:
 
     def _run_tool() -> dict[str, Any]:
         if name == "fetch_x_profile_timeline":
-            return _fetch_profile_timeline(args.get("handle") or "", args.get("limit") or DEFAULT_TIMELINE_LIMIT)
+            return _fetch_profile_timeline(
+                args.get("handle") or "",
+                args.get("limit") or DEFAULT_TIMELINE_LIMIT,
+                args.get("start_time") or None,
+                args.get("end_time") or None,
+            )
         if name == "fetch_x_post":
             return _fetch_post(args.get("url_or_id") or "")
         if name == "search_x_posts":

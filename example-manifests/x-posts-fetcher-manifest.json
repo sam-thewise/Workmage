@@ -1,0 +1,24 @@
+{
+  "name": "X Posts Fetcher",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Fetches posts from an X (Twitter) user for a date range using the Twitter API and outputs them in minimal format. Use as a setup agent in chains to collect posts for downstream use (e.g. investor reports).\n\nINPUT (plain text): Handle and from/to dates. Examples:\n- \"@handle, 2024-01-01 to 2024-03-31\"\n- \"handle: naval, from: 2024-02-01, to: 2024-02-29\"\n\nTOOLS: Use MCP Twitter fetch_x_profile_timeline(handle, limit, start_time, end_time). Pass start_time and end_time as ISO 8601 (e.g. 2024-01-01T00:00:00Z, 2024-03-31T23:59:59Z) or YYYY-MM-DD. Use limit up to 100 to cover the date range. Posts include created_at.\n\nOUTPUT: Minimal plain-text format, one post per line. Example:\n2024-01-15 | @handle | Post text here\n2024-01-16 | @handle | Another post\n\nOr: date | handle | text. No JSON unless asked. Keep it scannable for downstream agents.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-08T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain"],
+  "skills": [
+    {"name": "web/web_scraping", "id": 301}
+  ],
+  "domains": [{"name": "social_media/marketing", "id": 1601}],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "twitter_source",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp/twitter",
+      "timeout_sec": 30,
+      "retries": 2
+    }
+  ]
+}

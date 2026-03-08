@@ -14,7 +14,9 @@ This document locks the stable `twitter_source` MCP contract used by manifests a
 
 - **Arguments**
   - `handle` (string, required)
-  - `limit` (integer, optional, default `10`, clamp `1..50`)
+  - `limit` (integer, optional, default `10`; without date range clamp `1..20`, with date range clamp `1..100`)
+  - `start_time` (string, optional): ISO 8601 start of date range, e.g. `2024-01-01T00:00:00Z` or `2024-01-01`
+  - `end_time` (string, optional): ISO 8601 end of date range, e.g. `2024-03-31T23:59:59Z` or `2024-03-31`
 - **Result payload**
   - `source` (string)
   - `handle` (string, starts with `@`)
@@ -54,6 +56,7 @@ This document locks the stable `twitter_source` MCP contract used by manifests a
 - `author_handle` (string)
 - `text` (string)
 - `url` (string)
+- `created_at` (string, ISO 8601): Post creation timestamp, e.g. `2024-01-15T14:30:00.000Z`
 
 ## Error Semantics
 
@@ -68,4 +71,5 @@ Do not rename tools or remove fields above without updating:
 
 - `example-manifests/x-trend-scout-manifest.json`
 - `example-manifests/x-personality-builder-manifest.json`
+- `example-manifests/x-posts-fetcher-manifest.json`
 - any marketplace chain relying on `twitter_source`.
