@@ -66,6 +66,9 @@
         <h3 class="mt-3">Approval</h3>
         <p class="hint">Pause the chain for user review before continuing.</p>
         <v-btn size="small" variant="tonal" color="primary" block class="mt-1" @click="addApprovalNode">Add approval node</v-btn>
+        <h3 class="mt-3">Loop</h3>
+        <p class="hint">Run the second agent once per item (max 5). Connect: [IDs agent] → Loop → [Analysis agent].</p>
+        <v-btn size="small" variant="tonal" color="primary" block class="mt-1" @click="addLoopNode">Add loop node</v-btn>
       </div>
       <div v-if="selectedNode" class="node-options pa-3" style="background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border);">
         <h4 class="text-subtitle-2 mb-2">Node options</h4>
@@ -77,6 +80,11 @@
         <template v-else-if="selectedNode.type === 'approval'">
           <v-text-field v-model="selectedNode.data.title" label="Title" density="compact" hide-details placeholder="e.g. Review & continue" @update:model-value="touchNodes" />
           <v-textarea v-model="selectedNode.data.message" label="Message (optional)" density="compact" hide-details placeholder="Short note shown with the result" rows="2" class="mt-2" @update:model-value="touchNodes" />
+        </template>
+        <template v-else-if="selectedNode.type === 'loop'">
+          <v-text-field v-model.number="selectedNode.data.max_iterations" type="number" min="1" max="5" label="Max iterations" density="compact" hide-details placeholder="5" @update:model-value="touchLoopNode" />
+          <v-select v-model="selectedNode.data.parse_as" :items="parseAsOptions" item-title="title" item-value="value" label="Parse output as" density="compact" hide-details class="mt-2" @update:model-value="touchNodes" />
+          <p class="text-caption text-medium-emphasis mt-1">Source agent outputs items (one per line by default). Target agent runs once per item.</p>
         </template>
         <template v-else>
           <v-select v-model="selectedNode.data.lane" :items="laneOptions" item-title="title" item-value="value" label="Lane" density="compact" hide-details class="mb-2" @update:model-value="touchNodes" />
@@ -153,6 +161,7 @@ import FlowControls from '@/components/FlowControls.vue'
 import AgentNode from '@/components/AgentNode.vue'
 import SlugNode from '@/components/SlugNode.vue'
 import ApprovalNode from '@/components/ApprovalNode.vue'
+import LoopNode from '@/components/LoopNode.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import '@vue-flow/core/dist/style.css'
@@ -195,17 +204,32 @@ let pollInterval = null
 const compatibilityCache = ref({})
 const connectStartSource = ref(null)
 
-const nodeTypes = { agent: AgentNode, slug: SlugNode, approval: ApprovalNode }
+const nodeTypes = { agent: AgentNode, slug: SlugNode, approval: ApprovalNode, loop: LoopNode }
 const newSlugName = ref('')
 const savedSlugs = ref([])
 const laneOptions = [
   { title: 'Main', value: 'main' },
   { title: 'Setup (first run)', value: 'setup' },
 ]
+const parseAsOptions = [
+  { title: 'Lines (one per line)', value: 'lines' },
+  { title: 'Comma-separated', value: 'comma' },
+  { title: 'JSON array', value: 'json' },
+]
 
 const selectedNode = computed(() => nodes.value.find(n => n.selected) || null)
 function touchNodes() {
   nodes.value = [...nodes.value]
+}
+
+function touchLoopNode() {
+  const n = selectedNode.value
+  if (n?.type === 'loop' && n.data) {
+    const v = Math.max(1, Math.min(5, parseInt(n.data.max_iterations, 10) || 5))
+    n.data.max_iterations = v
+    n.data.label = 'for each (max ' + v + ')'
+  }
+  touchNodes()
 }
 
 function onNodeClick({ node }) {
@@ -279,6 +303,20 @@ async function loadChain() {
           position: n.position || { x: 0, y: 0 },
           data: { title: n.title || 'Review & continue', message: n.message || '' },
           dragHandle: '.approval-node-content',
+        }
+      }
+      if (n.type === 'loop') {
+        const maxIter = Math.max(1, Math.min(5, n.max_iterations ?? 5))
+        return {
+          id: n.id,
+          type: 'loop',
+          position: n.position || { x: 0, y: 0 },
+          data: {
+            max_iterations: maxIter,
+            parse_as: n.parse_as || 'lines',
+            label: 'for each (max ' + maxIter + ')',
+          },
+          dragHandle: '.loop-node-content',
         }
       }
       return {
@@ -378,6 +416,18 @@ function addApprovalNode() {
   }]
 }
 
+function addLoopNode() {
+  const id = `n${++nodeIdCounter}`
+  const defaultPos = { x: 100 + nodes.value.length * 200, y: 150 }
+  nodes.value = [...nodes.value, {
+    id,
+    type: 'loop',
+    position: defaultPos,
+    data: { max_iterations: 5, parse_as: 'lines', label: 'for each (max 5)' },
+    dragHandle: '.loop-node-content',
+  }]
+}
+
 function refreshEntryBadges() {
   const targetIds = new Set(edges.value.map(e => e.target))
   nodes.value = nodes.value.map(n => ({
@@ -436,6 +486,11 @@ function isValidConnection(params) {
   if (srcNode.type === 'approval') return true
   if (tgtNode.type === 'approval') return true
   if (srcNode.type === 'slug') return true
+  if (srcNode.type === 'loop' || tgtNode.type === 'loop') {
+    if (srcNode.type === 'loop') return !!tgtNode.data?.agent_id
+    if (tgtNode.type === 'loop') return !!srcNode.data?.agent_id
+    return false
+  }
   if (!srcNode.data?.agent_id || !tgtNode.data?.agent_id) return false
   const key = `${srcNode.data.agent_id}-${tgtNode.data.agent_id}`
   const compat = compatibilityCache.value[key]
@@ -448,8 +503,8 @@ function onConnect(params) {
   const srcNode = nodes.value.find(n => n.id === params.source)
   const tgtNode = nodes.value.find(n => n.id === params.target)
   if (!srcNode || !tgtNode) return
-  if (srcNode.type === 'approval' || tgtNode.type === 'approval') {
-    // no compatibility check for approval nodes
+  if (srcNode.type === 'approval' || tgtNode.type === 'approval' || srcNode.type === 'loop' || tgtNode.type === 'loop') {
+    // no compatibility check for approval/loop nodes
   } else if (srcNode.type !== 'slug' && tgtNode.type !== 'slug') {
   const key = `${srcNode.data?.agent_id}-${tgtNode.data?.agent_id}`
   if (compatibilityCache.value[key] === false) {
@@ -494,6 +549,16 @@ function buildDefinition() {
           position: n.position,
           title: (n.data?.title || '').trim() || undefined,
           message: (n.data?.message || '').trim() || undefined,
+        }
+      }
+      if (n.type === 'loop') {
+        const maxIter = Math.max(1, Math.min(5, parseInt(n.data?.max_iterations, 10) || 5))
+        return {
+          id: n.id,
+          type: 'loop',
+          position: n.position,
+          max_iterations: maxIter,
+          parse_as: n.data?.parse_as || 'lines',
         }
       }
       return {

@@ -870,7 +870,7 @@ async def run_chain(
                 "This chain uses GitHub. Add a GitHub token in settings (e.g. Users / GitHub token) first.",
             )
 
-    from app.worker.tasks import run_chain_task
+    from app.worker.tasks import run_chain_task, run_commit_analysis_loop_task, _extract_loop_config
 
     run = ChainRun(
         user_id=user.id,
@@ -910,19 +910,33 @@ async def run_chain(
         input_run_refs_valid = refs_valid
 
     job_id = str(uuid4())
-    task = run_chain_task.delay(
-        chain_id=chain_id,
-        user_input=payload.user_input,
-        model=payload.model,
-        api_key=api_key,
-        buyer_id=user.id if not payload.use_byok else None,
-        personality_text=personality_text,
-        run_type=payload.run_type,
-        run_owner_id=user.id,
-        github_token=github_token,
-        run_id=run.id,
-        input_run_refs=input_run_refs_valid,
-    )
+    loop_config = _extract_loop_config(defn)
+    use_loop_task = loop_config is not None and payload.run_type != "setup"
+    if use_loop_task:
+        task = run_commit_analysis_loop_task.delay(
+            chain_id=chain_id,
+            user_input=payload.user_input,
+            model=payload.model,
+            api_key=api_key,
+            buyer_id=user.id if not payload.use_byok else None,
+            run_owner_id=user.id,
+            github_token=github_token,
+            run_id=run.id,
+        )
+    else:
+        task = run_chain_task.delay(
+            chain_id=chain_id,
+            user_input=payload.user_input,
+            model=payload.model,
+            api_key=api_key,
+            buyer_id=user.id if not payload.use_byok else None,
+            personality_text=personality_text,
+            run_type=payload.run_type,
+            run_owner_id=user.id,
+            github_token=github_token,
+            run_id=run.id,
+            input_run_refs=input_run_refs_valid,
+        )
     run.job_id = job_id
     await db.commit()
     CHAIN_JOB_STORE[job_id] = (task.id, user.id, run.id)

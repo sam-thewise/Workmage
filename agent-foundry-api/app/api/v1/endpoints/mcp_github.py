@@ -133,6 +133,21 @@ TOOLS_LIST: list[dict[str, Any]] = [
             "required": ["repo", "path"],
         },
     },
+    {
+        "name": "get_compare",
+        "description": "Compare two commits (base...head) and return full diff. For a single commit, use parent SHA as base and commit SHA as head. Use three dots between base and head (e.g. base...head).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "owner": {"type": "string", "description": "Repository owner."},
+                "repo": {"type": "string", "description": "Repository name."},
+                "base": {"type": "string", "description": "Base commit SHA or branch (left side of ...)."},
+                "head": {"type": "string", "description": "Head commit SHA or branch (right side of ...)."},
+                "max_patch_length": {"type": "integer", "description": "Max characters per file patch. Omit for default (8000)."},
+            },
+            "required": ["repo", "base", "head"],
+        },
+    },
 ]
 
 
@@ -284,6 +299,65 @@ def _handle_get_file_contents(token: str, args: dict[str, Any]) -> str:
     return content
 
 
+def _handle_get_compare(token: str, args: dict[str, Any]) -> str:
+    owner, repo = _parse_owner_repo(args)
+    base = (args.get("base") or "").strip()
+    head = (args.get("head") or "").strip()
+    max_patch_length = args.get("max_patch_length")
+    if max_patch_length is not None:
+        max_patch_length = max(1000, min(100000, int(max_patch_length)))
+    else:
+        max_patch_length = MAX_PATCH_LENGTH
+    if not owner or not repo:
+        return "repo is required (e.g. 'owner/repo' or owner and repo separately)"
+    if not base or not head:
+        return "base and head are required (e.g. parent_sha...commit_sha for single-commit diff)"
+    path = f"/repos/{owner}/{repo}/compare/{urllib.parse.quote(base)}...{urllib.parse.quote(head)}"
+    try:
+        data = _github_request(token, path)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8") if e.fp else ""
+        try:
+            err = json.loads(body)
+            msg = err.get("message", body)
+        except Exception:
+            msg = body
+        if e.code == 404:
+            return (
+                f"GitHub API 404: {msg}. Token sent (preview: {_token_preview(token)}). "
+                "Check owner/repo/base/head."
+                + "\n"
+                + _request_summary_for_debug("GET", path, token)
+            )
+        return f"GitHub API error: {msg}"
+    except Exception as e:
+        return f"Request failed: {e}"
+    if not isinstance(data, dict):
+        return json.dumps(data)
+    ahead_by = data.get("ahead_by", 0)
+    behind_by = data.get("behind_by", 0)
+    commits = data.get("commits") or []
+    files = data.get("files") or []
+    out_lines = [
+        f"Compare: {base[:7]}...{head[:7]}",
+        f"ahead_by: {ahead_by}, behind_by: {behind_by}",
+        f"commits: {len(commits)}",
+        f"files changed: {len(files)}",
+        "",
+    ]
+    for f in files:
+        filename = f.get("filename", "")
+        status = f.get("status", "")
+        patch = (f.get("patch") or "")[:max_patch_length]
+        out_lines.append(f"--- {filename} ({status}) ---")
+        if patch:
+            out_lines.append(patch)
+            if len(f.get("patch") or "") > max_patch_length:
+                out_lines.append(f"\n[... truncated, max {max_patch_length} chars per file]")
+        out_lines.append("")
+    return "\n".join(out_lines).strip() or "No diff (empty comparison)"
+
+
 router = APIRouter(prefix="/mcp/github", tags=["mcp-github"])
 
 
@@ -302,6 +376,8 @@ def _handle_tools_call(token: str | None, params: dict[str, Any]) -> dict[str, A
         text = _handle_get_commit(token, args)
     elif name == "get_file_contents":
         text = _handle_get_file_contents(token, args)
+    elif name == "get_compare":
+        text = _handle_get_compare(token, args)
     else:
         text = f"Unknown tool: {name}"
     return {"content": [{"type": "text", "text": text}]}

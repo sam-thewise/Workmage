@@ -43,6 +43,7 @@ def validate_chain_definition(
     Checks: all agents exist and purchased, edges compatible, no cycles.
     """
     errors: list[str] = []
+    seen_loop_nodes: set[str] = set()
 
     node_by_id: dict[str, dict] = {}
     for n in nodes:
@@ -59,6 +60,13 @@ def validate_chain_definition(
         elif node_type == "approval":
             if agent_id is not None:
                 errors.append(f"Approval node {nid} must not have agent_id")
+        elif node_type == "loop":
+            if agent_id is not None:
+                errors.append(f"Loop node {nid} must not have agent_id")
+            in_count = sum(1 for e in edges if e.get("target") == nid)
+            out_count = sum(1 for e in edges if e.get("source") == nid)
+            if in_count != 1 or out_count != 1:
+                errors.append(f"Loop node {nid} must have exactly one incoming and one outgoing agent edge")
         elif agent_id is None:
             errors.append(f"Node {nid} missing agent_id")
         elif agent_id not in agent_lookup:
@@ -77,8 +85,34 @@ def validate_chain_definition(
         tgt_agent_id = node_by_id[tgt].get("agent_id")
         src_type = node_by_id[src].get("type")
         tgt_type = node_by_id[tgt].get("type")
-        # Only check agent format compatibility when both endpoints are agents (not approval/slug)
-        if src_agent_id is not None and tgt_agent_id is not None and src_type != "approval" and tgt_type != "approval":
+        # Loop node: validate ids agent -> analysis agent format compatibility (once per loop node)
+        loop_nid = src if src_type == "loop" else (tgt if tgt_type == "loop" else None)
+        if loop_nid and loop_nid not in seen_loop_nodes:
+            seen_loop_nodes.add(loop_nid)
+            ids_nid = src if tgt_type == "loop" else None
+            analysis_nid = tgt if src_type == "loop" else None
+            if ids_nid is None:
+                for e2 in edges:
+                    if e2.get("target") == loop_nid:
+                        ids_nid = e2.get("source")
+                        break
+            if analysis_nid is None:
+                for e2 in edges:
+                    if e2.get("source") == loop_nid:
+                        analysis_nid = e2.get("target")
+                        break
+            if ids_nid and analysis_nid and ids_nid in node_by_id and analysis_nid in node_by_id:
+                ids_agent_id = node_by_id[ids_nid].get("agent_id")
+                analysis_agent_id = node_by_id[analysis_nid].get("agent_id")
+                if ids_agent_id is not None and analysis_agent_id is not None:
+                    ids_agent = agent_lookup.get(ids_agent_id)
+                    analysis_agent = agent_lookup.get(analysis_agent_id)
+                    if ids_agent and analysis_agent and not can_chain(ids_agent, analysis_agent):
+                        errors.append(
+                            f"Loop node {loop_nid}: source agent {ids_agent_id} output cannot feed target agent {analysis_agent_id} (format mismatch)"
+                        )
+        # Only check agent format compatibility when both endpoints are agents (not approval/slug/loop)
+        elif src_agent_id is not None and tgt_agent_id is not None and src_type != "approval" and tgt_type != "approval":
             src_agent = agent_lookup.get(src_agent_id)
             tgt_agent = agent_lookup.get(tgt_agent_id)
             if src_agent and tgt_agent and not can_chain(src_agent, tgt_agent):

@@ -1,0 +1,24 @@
+{
+  "name": "GitHub Commit Deep Analysis",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Performs an in-depth analysis of a single commit: fetches commit data, diffs, and optional full file context to produce a structured markdown report. Use with the loop task—this agent expects exactly one commit SHA per run.\n\nINPUT (plain text): Exactly one commit SHA; optionally owner/repo and branch. Example: 'abc1234' or 'owner: agntcy, repo: ai-market, branch: main, sha: abc1234'.\n\nTOOLS: Call get_commit with include_patch: true for message, author, date, files, patches. For each changed file: if diff is small, use it; if file is large (> ~60k chars / ~15k tokens), use diff only and skip get_file_contents. Optionally call get_file_contents for key files (main source, config) with max_length (e.g. 30000) to stay under budget.\n\nOUTPUT: Markdown with:\n# Commit Analysis: [repo]\n\n## Commit [sha] — [date] by [author]\n\n### Summary\n[1–2 sentence human-readable summary]\n\n### Commit Message\n[original message if relevant]\n\n### Changes by File\n\n#### [filename] ([status])\n[Human-readable description of the change]\n[Key code/behavior changes]\n\nDo not output JSON unless asked. Use the commit message when relevant to the analysis.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-10T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain", "text/markdown"],
+  "skills": [
+    {"name": "information_retrieval/summarization", "id": 302}
+  ],
+  "domains": [{"name": "technology/software_development", "id": 1501}],
+  "modules": [
+    {
+      "type": "mcp",
+      "name": "github",
+      "transport": "http",
+      "url": "http://api:8000/api/v1/mcp/github",
+      "timeout_sec": 60,
+      "retries": 2
+    }
+  ]
+}

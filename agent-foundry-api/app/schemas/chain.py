@@ -5,12 +5,12 @@ from pydantic import BaseModel, Field
 
 
 class ChainNode(BaseModel):
-    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug; approval nodes have type='approval'."""
+    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug; approval nodes have type='approval'; loop nodes have type='loop'."""
     id: str
-    agent_id: int | None = None  # None for slug and approval nodes
+    agent_id: int | None = None  # None for slug, approval, loop nodes
     position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
     role: str | None = None
-    type: str | None = None  # "slug" | "approval" | None (agent)
+    type: str | None = None  # "slug" | "approval" | "loop" | None (agent)
     slug: str | None = None
     content: str | None = None  # optional fixed content for slug nodes ("set slug content")
     lane: str | None = None  # "setup" | "main"
@@ -18,6 +18,8 @@ class ChainNode(BaseModel):
     input_from_slug: str | None = None  # prefill agent input from saved output (optional)
     title: str | None = None  # for approval nodes: optional title shown with the result
     message: str | None = None  # for approval nodes: optional message shown with the result
+    max_iterations: int | None = None  # for loop nodes: max items per run (default 5)
+    parse_as: str | None = None  # for loop nodes: "lines" | "comma" | "json" (default lines)
 
 
 class ChainEdge(BaseModel):

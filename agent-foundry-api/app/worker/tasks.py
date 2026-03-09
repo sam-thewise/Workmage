@@ -645,6 +645,139 @@ def run_chain_task(
     return {"status": "completed", "content": final_content, "usage": agg_usage}
 
 
+def _extract_loop_config(defn: dict) -> tuple[int | None, int | None, int] | None:
+    """Extract ids_agent_id, analysis_agent_id, max_iterations from chain definition with a loop node.
+    Returns (ids_agent_id, analysis_agent_id, max_iterations) or None if no valid loop node."""
+    nodes = defn.get("nodes") or []
+    edges = defn.get("edges") or []
+    node_by_id = {n["id"]: n for n in nodes if n.get("id")}
+    for nid, n in node_by_id.items():
+        if n.get("type") != "loop":
+            continue
+        max_iterations = max(1, min(5, int(n.get("max_iterations") or 5)))
+        # Loop node: exactly one incoming agent, one outgoing agent
+        in_edges = [e for e in edges if e.get("target") == nid]
+        out_edges = [e for e in edges if e.get("source") == nid]
+        if len(in_edges) != 1 or len(out_edges) != 1:
+            return None
+        src_nid = in_edges[0].get("source")
+        tgt_nid = out_edges[0].get("target")
+        src_node = node_by_id.get(src_nid, {}) if src_nid else {}
+        tgt_node = node_by_id.get(tgt_nid, {}) if tgt_nid else {}
+        ids_agent_id = src_node.get("agent_id")
+        analysis_agent_id = tgt_node.get("agent_id")
+        if ids_agent_id is None or analysis_agent_id is None:
+            return None
+        return (ids_agent_id, analysis_agent_id, max_iterations)
+    return None
+
+
+@celery_app.task(bind=True, base=ChainRunTask)
+def run_commit_analysis_loop_task(
+    self,
+    chain_id: int,
+    user_input: str,
+    model: str,
+    api_key: str | None,
+    buyer_id: int | None = None,
+    run_owner_id: int | None = None,
+    github_token: str | None = None,
+    run_id: int | None = None,
+) -> dict:
+    """Run loop task: IDs agent → parse SHAs → run analysis agent per SHA (max 5) → concatenate.
+    Used when chain definition contains a loop node."""
+    import re
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings
+    from app.models.agent import Agent
+    from app.models.chain import AgentChain
+    from app.models.subscription import Subscription
+    from app.worker.sandbox import run_agent_in_sandbox
+
+    engine = create_engine(settings.DATABASE_SYNC_URL)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    with Session() as db:
+        chain_result = db.execute(select(AgentChain).where(AgentChain.id == chain_id))
+        chain = chain_result.scalar_one_or_none()
+        workspace_secrets = _get_workspace_secrets_for_chain(
+            db, getattr(chain, "workspace_id", None), chain_id
+        ) if chain else {}
+    if not chain:
+        _update_chain_run(run_id, "error", error="Chain not found")
+        return {"status": "error", "content": "Chain not found"}
+
+    config = _extract_loop_config(chain.definition or {})
+    if not config:
+        _update_chain_run(run_id, "error", error="Chain has no valid loop node (need exactly one loop with one in, one out agent)")
+        return {"status": "error", "content": "Invalid loop chain definition"}
+
+    ids_agent_id, analysis_agent_id, max_iterations = config
+
+    with Session() as db:
+        ids_agent = db.execute(select(Agent).where(Agent.id == ids_agent_id)).scalar_one_or_none()
+        analysis_agent = db.execute(select(Agent).where(Agent.id == analysis_agent_id)).scalar_one_or_none()
+    if not ids_agent or not analysis_agent:
+        _update_chain_run(run_id, "error", error=f"Agent(s) not found: ids={ids_agent_id}, analysis={analysis_agent_id}")
+        return {"status": "error", "content": "Agent not found"}
+
+    ids_content, ids_usage = run_agent_in_sandbox(
+        manifest=ids_agent.manifest,
+        user_input=user_input,
+        model=model,
+        api_key=api_key,
+        github_token=github_token,
+        extra_env=workspace_secrets,
+    )
+    if isinstance(ids_content, str) and any(
+        x in ids_content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
+    ):
+        _update_chain_run(run_id, "error", error=ids_content)
+        return {"status": "error", "content": ids_content}
+
+    lines = [ln.strip() for ln in (ids_content or "").splitlines() if ln.strip()]
+    all_valid_shas = [ln for ln in lines if re.match(r"^[a-fA-F0-9]{7,40}$", ln)]
+    shas = all_valid_shas[:max_iterations]
+    total_valid = len(all_valid_shas)
+
+    parts: list[str] = []
+    agg_usage = {"prompt_tokens": ids_usage.get("prompt_tokens", 0) or 0, "completion_tokens": ids_usage.get("completion_tokens", 0) or 0}
+    for sha in shas[:max_iterations]:
+        analysis_input = f"{sha}\n\n{user_input}" if user_input.strip() else sha
+        content, usage = run_agent_in_sandbox(
+            manifest=analysis_agent.manifest,
+            user_input=analysis_input,
+            model=model,
+            api_key=api_key,
+            github_token=github_token,
+            extra_env=workspace_secrets,
+        )
+        if usage:
+            agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
+            agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
+        if isinstance(content, str) and any(
+            x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
+        ):
+            _update_chain_run(run_id, "error", error=content)
+            return {"status": "error", "content": content}
+        parts.append(f"## Commit {sha}\n\n{(content or '').strip()}")
+
+    final_content = "\n\n---\n\n".join(parts)
+    if total_valid > max_iterations:
+        header = f"Only first {max_iterations} of {total_valid} commits analyzed (max {max_iterations} per run).\n\n"
+        final_content = header + final_content
+
+    if buyer_id:
+        with Session() as db:
+            sub = db.execute(select(Subscription).where(Subscription.buyer_id == buyer_id)).scalar_one_or_none()
+            if sub:
+                sub.runs_used += 1
+                db.commit()
+
+    _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
+    return {"status": "completed", "content": final_content, "usage": agg_usage}
+
+
 @celery_app.task(bind=True, base=ChainRunTask)
 def resume_chain_task(
     self,

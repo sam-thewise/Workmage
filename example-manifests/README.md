@@ -30,6 +30,8 @@ output: text/plain   input: text/plain   input: text/plain
 | `x-personality-builder-manifest.json` | text/plain | text/plain | Builds personality/voice profile from pasted tweets/handles using direct Twitter MCP tools; use in Setup lane and save to a slug, then feed slug to Content Writer |
 | `x-github-activity-manifest.json` | text/plain | text/plain | **GitHub scraper**: fetches repo commits, messages, optional file content; outputs a report for content creation. **Requires a GitHub token.** Chain into X Content Writer to support the import. |
 | `github-commit-summary-manifest.json` | text/plain | text/plain | **GitHub commit summary**: takes start and end dates plus repo, lists all commits in that range, fetches files changed and messages for each, outputs a summary of activity. **Requires a GitHub token.** |
+| `github-commit-ids-by-date-manifest.json` | text/plain | text/plain | **Commit IDs by date range**: outputs one commit SHA per line for a date range. For use with the Loop node and Commit Deep Analysis agent. **Requires a GitHub token.** |
+| `github-commit-deep-analysis-manifest.json` | text/plain | text/plain, text/markdown | **Commit Deep Analysis**: in-depth markdown analysis of a **single** commit (diffs, full files when under token budget). Use with the Loop node. **Requires a GitHub token.** |
 | `x-content-writer-github-manifest.json` | text/plain | text/plain, application/json | X Content Writer that **accepts** a repo activity report (from X GitHub Activity or pasted) plus trend report + beliefs; has scrape tool for URLs. Use after GitHub Activity in a chain. |
 | `contract-investigation-mcp-manifest.json` | text/plain | text/plain, application/json | **Contract investigation (Fuji)**: MCP tools for tx list by date range, caller analysis (new vs existing wallets), contract source, period metrics. Example: "How many new wallets on this date?" or "Visitors week X vs week Y." |
 
@@ -44,6 +46,18 @@ The GitHub-related flow is split into two agents so the scraper is separate and 
 **Chain for repo → posts:** **X GitHub Activity** → **X Content Writer (accepts GitHub report)**. Run the chain with input like "owner/repo, branch main, last 5 commits". The first agent produces the activity report; the second receives it as input and drafts posts and replies. You can also run X GitHub Activity alone and paste its output into X Content Writer (or the base X Content Writer) as needed.
 
 **GitHub token requirement:** Users must add a GitHub token before running the **X GitHub Activity** agent (or any chain that includes it). The token is stored **encrypted at rest** (same pattern as LLM BYOK keys) and is **only sent at runtime** when starting a run or chain—never stored in manifests or logs. Add a token via `POST /api/v1/users/me/github-token` with body `{ "token": "ghp_..." }` (personal access token or fine-grained token with `repo` read scope). If a run or chain uses an agent with a GitHub module and the user has no token saved, the API returns 400 with a message to add a GitHub token in settings.
+
+### Commit Analysis Loop (IDs → Loop → Deep Analysis)
+
+For per-commit deep analysis over a date range, use the **Loop** node in the chain builder:
+
+1. **GitHub Commit IDs by Date Range** (`github-commit-ids-by-date-manifest.json`) – Outputs one commit SHA per line for a date range. Uses `list_commits` with `since`/`until`.
+
+2. **GitHub Commit Deep Analysis** (`github-commit-deep-analysis-manifest.json`) – Analyzes **one** commit at a time: fetches commit, diffs, optional full files; produces a structured markdown report. Uses `get_commit` (with `include_patch`), `get_file_contents`, and optionally `get_compare`.
+
+**Chain with Loop node:** [Commit IDs agent] → [Loop node] → [Commit Deep Analysis agent]. The Loop node runs the analysis agent once per commit (max 5 per run) and concatenates the results. Each commit gets its own sandbox run to avoid heavy analysis in a single call.
+
+**Setup:** Add both agents to your chain. Add a **Loop** node from the palette. Connect: IDs agent output → Loop input, Loop output → Analysis agent input. Run with input like `owner/repo, branch main, 2024-01-01 to 2024-01-31`.
 
 ### X Authority workflow (Trend Scout → Content Writer)
 
