@@ -1,0 +1,68 @@
+# Celery worker with Docker-in-Docker sidecar so it can run agent-sandbox containers.
+# Both containers mount the same PVC at /agent-runs; worker uses DOCKER_HOST to talk to DinD.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-runs
+  namespace: agent-foundry
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: managed-csi  # Azure Files for ReadWriteMany
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: agent-foundry
+  labels:
+    app: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: celery
+          image: agent-foundry-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info"]
+          env:
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
+            - name: AGENT_SANDBOX_IMAGE
+              value: "agent-sandbox:latest"
+            - name: AGENT_RUNS_DIR
+              value: "/agent-runs"
+          envFrom:
+            - configMapRef:
+                name: agent-foundry-config
+            - secretRef:
+                name: agent-foundry-secrets
+          volumeMounts:
+            - name: agent-runs
+              mountPath: /agent-runs
+        - name: dind
+          image: docker:27-dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          volumeMounts:
+            - name: agent-runs
+              mountPath: /agent-runs
+          ports:
+            - containerPort: 2375
+              name: docker
+      volumes:
+        - name: agent-runs
+          persistentVolumeClaim:
+            claimName: agent-runs

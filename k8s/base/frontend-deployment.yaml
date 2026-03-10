@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: agent-foundry
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: agent-foundry-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5173
+              name: http
+          # VITE_API_URL is build-time in Vite; set when building the image or use runtime config in your app.
+          envFrom:
+            - configMapRef:
+                name: agent-foundry-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: agent-foundry
+  labels:
+    app: frontend
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 5173
+      targetPort: 5173
+      name: http

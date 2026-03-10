@@ -94,6 +94,21 @@ def run_agent_in_sandbox(
         try:
             client = docker.from_env()
             sandbox_network = _resolve_sandbox_network(client)
+            # When DOCKER_HOST is set (e.g. DinD in Kubernetes), use bind mount from daemon's AGENT_RUNS_DIR.
+            # Otherwise use a named volume (Compose / host Docker).
+            if os.environ.get("DOCKER_HOST"):
+                mount_source = AGENT_RUNS_DIR
+                mounts = [
+                    docker.types.Mount(type="bind", source=mount_source, target="/agent-runs"),
+                ]
+            else:
+                mounts = [
+                    docker.types.Mount(
+                        type="volume",
+                        source=AGENT_RUNS_VOLUME,
+                        target="/agent-runs",
+                    ),
+                ]
             logger.info(
                 "[sandbox] start job_id=%s image=%s network=%s model=%s manifest=%s",
                 job_id,
@@ -105,13 +120,7 @@ def run_agent_in_sandbox(
             container = client.containers.run(
                 AGENT_IMAGE,
                 detach=True,
-                mounts=[
-                    docker.types.Mount(
-                        type="volume",
-                        source=AGENT_RUNS_VOLUME,
-                        target="/agent-runs",
-                    ),
-                ],
+                mounts=mounts,
                 environment=env,
                 mem_limit=DEFAULT_MEMORY,
                 nano_cpus=int(DEFAULT_CPUS * 1e9),

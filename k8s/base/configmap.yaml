@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-foundry-config
+  namespace: agent-foundry
+data:
+  ENVIRONMENT: "production"
+  FRONTEND_URL: "https://demo.example.com"
+  API_PUBLIC_URL: "https://api-demo.example.com"
+  TWITTER_MCP_URL: "http://twitter-automation:8010/mcp/twitter"
+  TWITTER_MCP_TIMEOUT_SEC: "60"
+  TWITTER_MCP_RETRIES: "2"
+  TWITTER_MCP_HEALTH_PATH: "/health"
+  # Override these in demo overlay or patch for your hostnames
