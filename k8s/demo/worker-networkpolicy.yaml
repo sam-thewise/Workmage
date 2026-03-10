@@ -1,0 +1,31 @@
+# Demo-only: restrict worker pod traffic. DinD listens on localhost only; this limits blast radius.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-egress
+  namespace: agent-foundry
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress for same-namespace (Redis, Postgres), image pulls (ACR, internet), and LLM APIs.
+    - {}
+---
+# Allow ingress to worker only from same namespace (beat, API, etc.).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-ingress
+  namespace: agent-foundry
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}

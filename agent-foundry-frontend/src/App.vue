@@ -37,8 +37,8 @@
           </v-list>
         </v-menu>
         <v-btn variant="text" color="on-surface" to="/chains">My AI Teams</v-btn>
-        <v-btn v-if="authStore.user?.role === 'expert' || authStore.user?.role === 'admin'" variant="text" color="on-surface" to="/dashboard/agents">My AI Roles</v-btn>
-        <v-btn v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'moderator'" variant="text" color="on-surface" to="/admin">Admin</v-btn>
+        <v-btn v-if="!foundersViewOnly && (authStore.user?.role === 'expert' || authStore.user?.role === 'admin')" variant="text" color="on-surface" to="/dashboard/agents">My AI Roles</v-btn>
+        <v-btn v-if="!foundersViewOnly && (authStore.user?.role === 'admin' || authStore.user?.role === 'moderator')" variant="text" color="on-surface" to="/admin">Admin</v-btn>
         <v-btn variant="text" color="on-surface" to="/dashboard">Dashboard</v-btn>
         <v-btn variant="text" color="on-surface" to="/wizard">Quick start wizard</v-btn>
         <v-btn variant="text" color="on-surface" to="/run">Run AI Role</v-btn>
@@ -103,6 +103,9 @@ import api from '@/services/api'
 const authStore = useAuthStore()
 const workspaceStore = useWorkspaceStore()
 const notificationCount = ref(0)
+
+/** When true, only show menu items relevant to founders (hide My AI Roles, Admin). Set via VITE_FOUNDERS_VIEW_ONLY. */
+const foundersViewOnly = import.meta.env.VITE_FOUNDERS_VIEW_ONLY === 'true' || import.meta.env.VITE_FOUNDERS_VIEW_ONLY === '1'
 const notificationItems = ref([])
 let notificationPollTimer = null
 

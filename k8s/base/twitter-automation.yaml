@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: twitter-automation
+  namespace: agent-foundry
+  labels:
+    app: twitter-automation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: twitter-automation
+  template:
+    metadata:
+      labels:
+        app: twitter-automation
+    spec:
+      containers:
+        - name: twitter-automation
+          image: twitter-automation-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8010
+              name: http
+          env:
+            - name: TWITTER_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-foundry-secrets
+                  key: TWITTER_BEARER_TOKEN
+                  optional: true
+            - name: TWITTER_AUTOMATION_OPERATION_TIMEOUT_SEC
+              value: "45"
+            - name: TWITTER_AUTOMATION_LOG_LEVEL
+              value: "INFO"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: twitter-automation
+  namespace: agent-foundry
+  labels:
+    app: twitter-automation
+spec:
+  selector:
+    app: twitter-automation
+  ports:
+    - port: 8010
+      targetPort: 8010
+      name: http

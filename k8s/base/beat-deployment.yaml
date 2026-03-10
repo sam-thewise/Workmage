@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beat
+  namespace: agent-foundry
+  labels:
+    app: beat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: beat
+  template:
+    metadata:
+      labels:
+        app: beat
+    spec:
+      containers:
+        - name: beat
+          image: agent-foundry-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=info"]
+          envFrom:
+            - configMapRef:
+                name: agent-foundry-config
+            - secretRef:
+                name: agent-foundry-secrets

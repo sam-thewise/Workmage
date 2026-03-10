@@ -1,0 +1,121 @@
+# Deploy Agent Foundry to AKS when pushing to the demo branch.
+# Builds and pushes images to ACR, then deploys via kubectl + Kustomize.
+name: Deploy to AKS (demo branch)
+
+on:
+  push:
+    branches: [demo]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: true
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME || secrets.ACR_NAME }}
+  AKS_NAME: ${{ vars.AKS_NAME || secrets.AKS_NAME }}
+  AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP || secrets.AKS_RESOURCE_GROUP }}
+  NAMESPACE: agent-foundry
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: ACR login
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+          echo "ACR_LOGIN_SERVER=$(az acr show -n ${{ env.ACR_NAME }} --query loginServer -o tsv)" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push agent-foundry-api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent-foundry-api
+          file: ./agent-foundry-api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/agent-foundry-api:${{ github.sha }}
+            ${{ env.ACR_LOGIN_SERVER }}/agent-foundry-api:demo
+          cache-from: type=gha
+          cache-to: type=gha
+
+      - name: Build and push agent-foundry-frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent-foundry-frontend
+          file: ./agent-foundry-frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/agent-foundry-frontend:${{ github.sha }}
+            ${{ env.ACR_LOGIN_SERVER }}/agent-foundry-frontend:demo
+          cache-from: type=gha
+          cache-to: type=gha
+
+      - name: Build and push agent-sandbox
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent-sandbox
+          file: ./agent-sandbox/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:${{ github.sha }}
+            ${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:demo
+          cache-from: type=gha
+          cache-to: type=gha
+
+      - name: Build and push twitter-automation-service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./twitter-automation-service
+          file: ./twitter-automation-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/twitter-automation-service:${{ github.sha }}
+            ${{ env.ACR_LOGIN_SERVER }}/twitter-automation-service:demo
+          cache-from: type=gha
+          cache-to: type=gha
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials --resource-group ${{ env.AKS_RESOURCE_GROUP }} --name ${{ env.AKS_NAME }} --overwrite-existing
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Set up kustomize
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: '5.4.1'
+
+      - name: Create namespace
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Set image tags and deploy
+        run: |
+          cd k8s/demo
+          kustomize edit set image agent-foundry-api:latest=${{ env.ACR_LOGIN_SERVER }}/agent-foundry-api:demo
+          kustomize edit set image agent-foundry-frontend:latest=${{ env.ACR_LOGIN_SERVER }}/agent-foundry-frontend:demo
+          kustomize edit set image agent-sandbox:latest=${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:demo
+          kustomize edit set image twitter-automation-service:latest=${{ env.ACR_LOGIN_SERVER }}/twitter-automation-service:demo
+          kubectl apply -k .
+
+      - name: Set worker sandbox image
+        run: |
+          kubectl set env deployment/worker -n ${{ env.NAMESPACE }} \
+            AGENT_SANDBOX_IMAGE=${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:demo

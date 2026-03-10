@@ -136,7 +136,10 @@
                     <v-chip size="x-small" :color="auditStatusColor(step.status)" variant="tonal">{{ step.status }}</v-chip>
                     <span v-if="step.duration_ms != null" class="text-caption ms-1">{{ step.duration_ms }}ms</span>
                   </div>
-                  <div v-if="step.output_preview" class="audit-step-preview text-caption">{{ step.output_preview }}</div>
+                  <div v-if="step.slug_value !== undefined" class="audit-step-preview text-caption">
+                    <span class="text-medium-emphasis">Value at run:</span> {{ step.slug_value || '(empty)' }}
+                  </div>
+                  <div v-else-if="step.output_preview" class="audit-step-preview text-caption">{{ step.output_preview }}</div>
                   <div v-if="step.usage && (step.usage.prompt_tokens || step.usage.completion_tokens)" class="text-caption text-medium-emphasis">
                     Tokens: {{ step.usage.prompt_tokens ?? 0 }} prompt, {{ step.usage.completion_tokens ?? 0 }} completion
                   </div>
@@ -177,7 +180,10 @@
                         <v-chip size="x-small" :color="auditStatusColor(step.status)" variant="tonal">{{ step.status }}</v-chip>
                         <span v-if="step.duration_ms != null" class="text-caption ms-1">{{ step.duration_ms }}ms</span>
                       </div>
-                      <div v-if="step.output_preview" class="audit-step-preview text-caption">{{ step.output_preview }}</div>
+                      <div v-if="step.slug_value !== undefined" class="audit-step-preview text-caption">
+                        <span class="text-medium-emphasis">Value at run:</span> {{ step.slug_value || '(empty)' }}
+                      </div>
+                      <div v-else-if="step.output_preview" class="audit-step-preview text-caption">{{ step.output_preview }}</div>
                       <div v-if="step.usage && (step.usage.prompt_tokens || step.usage.completion_tokens)" class="text-caption text-medium-emphasis">
                         Tokens: {{ step.usage.prompt_tokens ?? 0 }} prompt, {{ step.usage.completion_tokens ?? 0 }} completion
                       </div>

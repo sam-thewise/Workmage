@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agent-foundry
+
+resources:
+  - ../base
+  - worker-deployment.yaml
+  - worker-networkpolicy.yaml
+
+# Demo-only: generate agent-foundry-secrets so base is never applied with example secrets.
+# Production / other clusters must create agent-foundry-secrets out-of-band.
+secretGenerator:
+  - name: agent-foundry-secrets
+    literals:
+      - POSTGRES_PASSWORD=__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__
+      - DATABASE_URL=postgresql+asyncpg://postgres:__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__@postgres:5432/agentfoundry
+      - DATABASE_SYNC_URL=postgresql://postgres:__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__@postgres:5432/agentfoundry
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=__REPLACE_WITH_SECURE_RANDOM_SECRET_KEY__
+    options:
+      disableNameSuffixHash: true
+
+# Image tags are set by the GitHub Action (kustomize edit set image) before apply.
+# Optionally add images: here for local apply, e.g.:
+# images:
+#   - name: agent-foundry-api:latest
+#     newName: myacr.azurecr.io/agent-foundry-api
+#     newTag: demo

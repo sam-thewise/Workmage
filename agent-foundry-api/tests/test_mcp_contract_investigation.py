@@ -1,10 +1,12 @@
 """Tests for contract investigation MCP endpoint (Fuji)."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from zoneinfo import ZoneInfo
 
 from app.main import app
 
@@ -115,14 +117,52 @@ async def test_mcp_contract_investigation_tools_call_missing_args():
     assert "contract_address" in text.lower() or "required" in text.lower()
 
 
+def test_contract_investigation_date_parsing_timezone_conversion():
+    """Date-only with timezone_name yields correct UTC timestamps for a non-UTC zone."""
+    from app.services.contract_investigation import _date_range_to_timestamps
+
+    # 2024-01-15 00:00:00 America/New_York (EST) = 2024-01-15 05:00:00 UTC
+    start_ts, end_ts = _date_range_to_timestamps(
+        "2024-01-15", "2024-01-15", timezone_name="America/New_York"
+    )
+    tz_ny = ZoneInfo("America/New_York")
+    expected_start = datetime(2024, 1, 15, 0, 0, 0, tzinfo=tz_ny).timestamp()
+    assert start_ts == int(expected_start)
+    assert start_ts == 1705294800  # 2024-01-15 05:00:00 UTC
+    # end_ts is end of that local (America/New_York) day converted to UTC.
+    # 2024-01-15 23:59:59.999999 America/New_York = 2024-01-16 04:59:59.999999 UTC
+    end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+    assert end_dt.hour == 4 and end_dt.minute == 59
+    assert end_dt.day == 16 and end_dt.month == 1
+
+
+def test_contract_investigation_date_parsing_invalid_timezone():
+    """Invalid timezone raises ValueError with a clean validation message."""
+    from app.services.contract_investigation import _date_range_to_timestamps
+
+    with pytest.raises(ValueError) as exc_info:
+        _date_range_to_timestamps(
+            "2024-01-15", "2024-01-16", timezone_name="Invalid/Timezone"
+        )
+    assert "Invalid timezone" in str(exc_info.value)
+    assert "America/New_York" in str(exc_info.value) or "IANA" in str(exc_info.value)
+
+
 @pytest.mark.asyncio
 async def test_contract_investigation_service_date_parsing_and_block_range():
-    """Service: date range is converted to block range via getblocknobytime."""
+    """Service: date range is converted to block range via getblocknobytime; range clamped to indexer latest."""
     from app.services import contract_investigation
 
+    # Latest block ts after 2024-03-02 so no clamping; then start/end block lookups
+    mock_latest_ts = AsyncMock(return_value=2000000000)
     mock_block = AsyncMock(side_effect=[1000, 2000])
     mock_request = AsyncMock(return_value={"result": []})
     with (
+        patch.object(
+            contract_investigation,
+            "get_latest_block_timestamp",
+            mock_latest_ts,
+        ),
         patch.object(
             contract_investigation,
             "get_block_number_by_time",
@@ -141,6 +181,7 @@ async def test_contract_investigation_service_date_parsing_and_block_range():
             "fuji",
         )
         assert txs == []
+        assert mock_latest_ts.await_count == 1
         assert mock_block.await_count == 2
         # First call: start_ts -> block (after); second: end_ts -> block (before)
         calls = mock_block.await_args_list

@@ -37,6 +37,9 @@ docker compose up -d
 - **Web scraping tool (token-efficient markdown)**: The API exposes an MCP endpoint that provides a `scrape_as_markdown` tool. It fetches a URL and returns main content as markdown using [trafilatura](https://github.com/adbar/trafilatura) (main-content extraction), so agents use fewer tokens than raw HTML. To use it, add an MCP module to your agent manifest with `type: "mcp"`, `transport: "http"`, and `url` set to your API base + `/api/v1/mcp` (e.g. `https://your-api-host/api/v1/mcp`, or `http://api:8000/api/v1/mcp` when the sandbox and API share a Docker network). Optional: set `MCP_PUBLIC_URL` in `.env` if the MCP endpoint is served from a different URL.
 - **Direct Twitter source MCP**: The API supports `/api/v1/mcp/twitter` and proxies tool calls to the twitter-automation service.
 - **Contract investigation MCP (Fuji first)**: The API supports `/api/v1/mcp/contract-investigation` with tools: `get_contract_transactions` (tx list by date range), `get_contract_source` (verified source + ABI), `get_contract_callers_analysis` (per-wallet stats: new vs existing, first tx on chain, tx counts), and `get_contract_period_metrics` (aggregates: total_tx, unique_callers_count, new_callers_count). Use with `network: "fuji"` (default) or `"avalanche"`. Example AI query: *"How many new wallets interacted with this contract on this date?"* or *"How many more visitors in week X vs week Y?"* Add an MCP module with `url` set to your API base + `/api/v1/mcp/contract-investigation`.
+- **GitHub MCP & token**: Agents can use GitHub MCP tools (`list_commits`, `get_commit`, `get_file_contents`) for repo activity, commit summaries, and deep commit analysis. Users add a GitHub token in Settings (stored encrypted, sent only at run time). Required for agents/chains that declare a GitHub module; see example-manifests (X GitHub Activity, commit summary, commit IDs by date, commit deep analysis).
+- **Content drafts & X Authority**: Chains like X Trend Scout → X Content Writer produce post/reply drafts. Use `POST /api/v1/content-drafts/bulk` to create drafts from chain output, then the Drafts UI to edit and approve before copying to X.
+- **Chain Loop node**: In the chain builder, a **Loop** node runs a downstream agent once per item (e.g. per commit SHA). Example: Commit IDs by Date → Loop → Commit Deep Analysis for per-commit markdown reports (max 5 per run).
 - **Action infrastructure**: Policy-controlled execution, agent wallets (ERC-6551–style), trust metadata (ERC-8004–aligned), simulation-first tx execution, and optional live broadcast after approval
 
 ## Makefile Commands
@@ -119,17 +122,27 @@ Admins can invite users to become moderators (Admin Panel → Moderator Invites)
 
 Moderators can approve/reject/remove both agents and chains. Only admins can create moderator invites.
 
+## Deployment (Azure / AKS)
+
+Deploy the full stack to **Azure Kubernetes Service** using the demo-branch GitHub Action:
+
+1. **One-time Azure setup**: Create resource group, ACR, AKS, and (optional) Azure Database for PostgreSQL and Azure Cache for Redis. See **[docs/deploy-azure-infrastructure.md](docs/deploy-azure-infrastructure.md)** for step-by-step Azure CLI commands and GitHub secrets.
+2. **Deploy**: Push to the `demo` branch (or run the workflow manually). The action builds images, pushes to ACR, and runs `kubectl apply -k k8s/demo`. See **[docs/deploy-azure.md](docs/deploy-azure.md)** for env vars, secrets, and post-deploy steps.
+
+K8s manifests: `k8s/base/` (API, worker, beat, frontend, Postgres, Redis, twitter-automation, ingress) and `k8s/demo/` (Kustomize overlay for demo).
+
 ## Agent Chaining
 
-Create chains of agents so output from one feeds into the next. Use **My Chains** (authenticated) to build and publish visual pipelines. Compatibility is enforced via `input_formats` and `output_formats` in manifests.
+Create chains of agents so output from one feeds into the next. Use **My Chains** (authenticated) to build and publish visual pipelines. Compatibility is enforced via `input_formats` and `output_formats` in manifests. Use the **Loop** node to run one agent per item (e.g. per commit) and concatenate results.
 
 Example chainable manifests are in `example-manifests/`:
 
-- `demo-agent-manifest.json` – Web Summarizer (input: text/plain, text/url; output: text/plain)
-- `url-suggester-manifest.json` – Suggests URLs; chains into Web Summarizer
-- `report-writer-manifest.json` – Structured report; receives from Web Summarizer
+- **Web & reports**: `url-suggester-manifest.json`, `web-summarizer-mcp-manifest.json`, `report-writer-manifest.json`, `comparison-chain-definition.json`
+- **X/Twitter**: X Trend Scout, X Content Writer, X Reply Suggester, X Personality Builder, X Posts Fetcher; chain Trend Scout → Content Writer for authority-building, then create drafts via content-drafts API
+- **GitHub**: X GitHub Activity, GitHub commit summary, commit IDs by date, commit deep analysis; use with Loop node for per-commit analysis (see example-manifests README)
+- **Blockchain**: `avalanche-action-agent.json`, `contract-investigation-mcp-manifest.json` (Fuji contract tx/caller metrics)
 
-See `example-manifests/README.md` for the full chain diagram.
+See `example-manifests/README.md` for the full chain diagram, compatibility table, and GitHub token setup.
 
 ## Workflow Verification
 
@@ -268,6 +281,8 @@ The error returned from MCP includes the screenshot/html paths plus current URL/
 ### API surface
 
 - **Agents**: `GET /api/v1/agents/{id}` — agent details. `GET /api/v1/agents/{id}/agent-uri` — ERC-8004 AgentURI metadata (name, description, image, services) for on-chain identity.
+- **GitHub token**: `POST /api/v1/users/me/github-token` — set encrypted GitHub token for agents that use GitHub MCP (e.g. X GitHub Activity, commit summary). Required when running such agents or chains; add via Settings in the UI or this endpoint.
+- **Content drafts**: `POST /api/v1/content-drafts/bulk` — create drafts from chain output (e.g. X Content Writer); then use the Drafts UI to edit and approve before copying to X.
 - **Action infra**: `GET/POST /api/v1/action-infra/...` — health, executions, wallets, fund/withdraw intents, trust profiles, execute (simulation or live), request-approval, approve, broadcast. See API docs at `/docs`.
 - **Reference capability**: `POST /api/v1/action-infra/reference/liquidity-scan` — requires `ACTIONS_ENABLE_REFERENCE_CAPABILITIES`, RPC URL, and `ACTIONS_FACTORY_ADDRESSES`.
 - **Admin**: `GET/POST /api/v1/admin/agent-nft-contracts` — list or register deployed shared agent NFT contract per network. `POST .../agent-nft-contracts/{network}/verify` and `.../verify-status` — submit verification to Snowtrace and poll status.
@@ -288,8 +303,11 @@ See `contracts/agent-nft/README.md` for full steps and env vars.
 
 ## Project Structure
 
-- `agent-foundry-api/` - FastAPI backend (auth, agents, purchases, runs, chains, LLM, action-infra, admin agent-nft-contracts)
-- `agent-foundry-frontend/` - Vue 3 + Vite frontend
+- `agent-foundry-api/` - FastAPI backend (auth, agents, purchases, runs, chains, LLM, action-infra, admin agent-nft-contracts, content-drafts, GitHub token)
+- `agent-foundry-frontend/` - Vue 3 + Vite frontend (marketplace, chains, Drafts UI, admin)
 - `agent-sandbox/` - Docker base image for agent execution (LiteLLM + MCP client)
 - `contracts/agent-nft/` - Shared agent identity NFT (ERC-721): deploy and verify on Snowtrace (Fuji/mainnet)
-- `example-manifests/` - Chainable OASF manifest examples and Avalanche action-infra demo
+- `docs/` - Deployment and MCP docs: `deploy-azure-infrastructure.md`, `deploy-azure.md`, `twitter_mcp_contract.md`
+- `example-manifests/` - Chainable OASF manifest examples (web, X/Twitter, GitHub, contract investigation, Avalanche action-infra)
+- `k8s/base/` - Kubernetes base manifests (API, worker, beat, frontend, Postgres, Redis, twitter-automation, ingress)
+- `k8s/demo/` - Kustomize overlay for demo branch (Azure ACR image tags)
