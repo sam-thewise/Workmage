@@ -14,7 +14,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  # storageClassName: managed-csi  # Azure Files for ReadWriteMany
+  # storageClassName: azurefile-csi  # AKS Azure Files for ReadWriteMany; adjust for other clusters
 ---
 apiVersion: apps/v1
 kind: Deployment

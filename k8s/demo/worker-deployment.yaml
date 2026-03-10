@@ -11,7 +11,8 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  # storageClassName: managed-csi  # Azure Files for ReadWriteMany
+  # AKS: use Azure Files so the PVC can bind (default storage classes are RWO).
+  storageClassName: azurefile-csi
 ---
 apiVersion: apps/v1
 kind: Deployment
