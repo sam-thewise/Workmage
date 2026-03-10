@@ -129,10 +129,11 @@ def test_contract_investigation_date_parsing_timezone_conversion():
     expected_start = datetime(2024, 1, 15, 0, 0, 0, tzinfo=tz_ny).timestamp()
     assert start_ts == int(expected_start)
     assert start_ts == 1705294800  # 2024-01-15 05:00:00 UTC
-    # end_ts is end of that UTC day (23:59:59.999999)
+    # end_ts is end of that local (America/New_York) day converted to UTC.
+    # 2024-01-15 23:59:59.999999 America/New_York = 2024-01-16 04:59:59.999999 UTC
     end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
-    assert end_dt.hour == 23 and end_dt.minute == 59
-    assert end_dt.day == 15 and end_dt.month == 1
+    assert end_dt.hour == 4 and end_dt.minute == 59
+    assert end_dt.day == 16 and end_dt.month == 1
 
 
 def test_contract_investigation_date_parsing_invalid_timezone():
