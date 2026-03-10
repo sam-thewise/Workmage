@@ -268,9 +268,9 @@ You can use **Variables** instead of secrets for `ACR_NAME`, `AKS_NAME`, and `AK
 
 ## 10. One-time Kubernetes secret (app config)
 
-The workflow applies manifests from `k8s/demo`; the base includes an example secret. For a real deploy you should replace it with a secret that has your DB and Redis URLs.
+The workflow applies manifests from `k8s/demo`. The **base** kustomization does not include the worker (no privileged DinD) or a secret; the **demo** overlay provides a secretGenerator (demo values) and a hardened worker with TLS. For a real deploy you should replace the secret with one that has your DB and Redis URLs (create out-of-band or use External Secrets).
 
-**If you use in-cluster Postgres/Redis** (default in base): the example secret is enough for a first run. Ensure `k8s/base/kustomization.yaml` includes `secret.example.yaml` (or a copy you renamed).
+**If you use in-cluster Postgres/Redis** (default in demo): the demo overlay's secretGenerator is enough for a first run.
 
 **If you use Azure PostgreSQL and/or Azure Redis**: create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7):
 
@@ -286,7 +286,7 @@ kubectl create secret generic agent-foundry-secrets -n agent-foundry \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-If you use the example secret from the manifests, the first `kubectl apply -k k8s/demo` will create/overwrite it. To avoid that, remove `secret.example.yaml` from `k8s/base/kustomization.yaml` and rely on the secret you created above.
+If you use the demo overlay's generated secret, the first `kubectl apply -k k8s/demo` will create it. For production, create the secret out-of-band (as above) and do not rely on the demo secretGenerator.
 
 ---
 

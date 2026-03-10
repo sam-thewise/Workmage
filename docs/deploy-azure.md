@@ -21,7 +21,7 @@ You can use **OIDC** instead of a client secret: create an app registration, add
 ## What gets deployed
 
 - **API** (FastAPI): Service name must be `api` so in-cluster MCP URLs like `http://api:8000/api/v1/mcp` resolve from sandbox containers.
-- **Worker** (Celery): Same image as API; runs with a Docker-in-Docker (DinD) sidecar so it can start agent-sandbox containers. Uses env `AGENT_SANDBOX_IMAGE` (set by the workflow to your ACR agent-sandbox image).
+- **Worker** (Celery): Same image as API; runs with a Docker-in-Docker (DinD) sidecar so it can start agent-sandbox containers. Uses env `AGENT_SANDBOX_IMAGE` (set by the workflow to your ACR agent-sandbox image). The **base** kustomization does not include the worker (no privileged DinD there); the **demo** overlay adds a hardened worker with TLS, resource limits, and a NetworkPolicy. For production, use a separate overlay or a Kubernetes Job–based executor.
 - **Beat** (Celery Beat): One replica; schedules periodic tasks (mint payments, X authority).
 - **Twitter-automation**: MCP proxy; API uses `TWITTER_MCP_URL` pointing to `http://twitter-automation:8010/mcp/twitter`.
 - **Frontend**: Vue app; build with the correct `VITE_API_URL` for the public API URL if needed.
@@ -52,7 +52,7 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 
 - **Migrations**: Run Alembic against the DB (e.g. from a one-off job or locally with `DATABASE_URL`): `alembic -c agent-foundry-api/alembic.ini upgrade head`.
 - **Ingress**: Edit `k8s/base/ingress.yaml` (or overlay) with your hostnames and TLS; ensure your ingress controller is installed (e.g. NGINX or AGIC).
-- **Storage**: The worker’s PVC `agent-runs` uses `ReadWriteMany`; on AKS you may need a storage class (e.g. Azure Files). Set `storageClassName` in `k8s/base/worker-deployment.yaml` if required.
+- **Storage**: The worker’s PVC `agent-runs` uses `ReadWriteMany`; on AKS you may need a storage class (e.g. Azure Files). Set `storageClassName` in `k8s/demo/worker-deployment.yaml` if required (demo overlay).
 
 ## Local apply (without the Action)
 

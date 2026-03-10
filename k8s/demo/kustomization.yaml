@@ -5,6 +5,8 @@ namespace: agent-foundry
 
 resources:
   - ../base
+  - worker-deployment.yaml
+  - worker-networkpolicy.yaml
 
 # Demo-only: generate agent-foundry-secrets so base is never applied with example secrets.
 # Production / other clusters must create agent-foundry-secrets out-of-band.
