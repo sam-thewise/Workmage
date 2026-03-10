@@ -66,15 +66,12 @@ def _date_range_to_timestamps(
     timezone_name: str | None = None,
 ) -> tuple[int, int]:
     """Return (start_ts, end_ts) for the given date range in UTC. end_ts is end of end_date day.
-    If start_date > end_date, they are swapped so start_ts <= end_ts.
+    If the range is inverted, timestamps are swapped so start_ts <= end_ts.
     """
     start_date = (start_date or "").strip()
     end_date = (end_date or "").strip()
     if not start_date or not end_date:
         raise ValueError("start_date and end_date are required")
-    # Normalize order: ensure start <= end
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
     start_ts = _parse_date(start_date, timezone_name)
     end_ts = _parse_date(end_date, timezone_name)
     # If only date given (YYYY-MM-DD), end_ts is start of that day; set to end of day UTC
