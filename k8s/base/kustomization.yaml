@@ -3,10 +3,11 @@ kind: Kustomization
 
 namespace: agent-foundry
 
+# agent-foundry-secrets is NOT in resources. Create it out-of-band (kubectl create secret,
+# External Secrets, etc.) or use the demo overlay which provides a secretGenerator for demo only.
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.example.yaml
   - postgres.yaml
   - redis.yaml
   - api-deployment.yaml

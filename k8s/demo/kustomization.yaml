@@ -6,6 +6,19 @@ namespace: agent-foundry
 resources:
   - ../base
 
+# Demo-only: generate agent-foundry-secrets so base is never applied with example secrets.
+# Production / other clusters must create agent-foundry-secrets out-of-band.
+secretGenerator:
+  - name: agent-foundry-secrets
+    literals:
+      - POSTGRES_PASSWORD=postgres
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/agentfoundry
+      - DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/agentfoundry
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=demo-change-me
+    options:
+      disableNameSuffixHash: true
+
 # Image tags are set by the GitHub Action (kustomize edit set image) before apply.
 # Optionally add images: here for local apply, e.g.:
 # images:
