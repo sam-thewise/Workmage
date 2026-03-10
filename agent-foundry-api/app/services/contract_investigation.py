@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -77,10 +77,16 @@ def _date_range_to_timestamps(
         start_date, end_date = end_date, start_date
     start_ts = _parse_date(start_date, timezone_name)
     end_ts = _parse_date(end_date, timezone_name)
-    # If only date given (YYYY-MM-DD), end_ts is start of that day; set to end of day UTC
+    # If only date given (YYYY-MM-DD), set end_ts to end of that day (in input TZ, then UTC)
     if re.match(r"^\d{4}-\d{2}-\d{2}$", end_date):
-        end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
-        end_ts = int(end_dt.replace(hour=23, minute=59, second=59, microsecond=999999).timestamp())
+        if timezone_name:
+            tz = ZoneInfo(timezone_name)
+            end_day_start = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=tz)
+            end_of_day_local = end_day_start + timedelta(days=1) - timedelta(microseconds=1)
+            end_ts = int(end_of_day_local.timestamp())
+        else:
+            end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+            end_ts = int(end_dt.replace(hour=23, minute=59, second=59, microsecond=999999).timestamp())
     if start_ts > end_ts:
         start_ts, end_ts = end_ts, start_ts
     return start_ts, end_ts
