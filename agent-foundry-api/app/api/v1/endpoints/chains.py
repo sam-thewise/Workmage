@@ -845,12 +845,24 @@ async def run_chain(
             raise HTTPException(400, f"No BYOK key for {provider}")
 
     personality_text = None
-    profile_result = await db.execute(
-        select(UserPersonalityProfile).where(UserPersonalityProfile.user_id == user.id)
-    )
-    profile = profile_result.scalar_one_or_none()
-    if profile and (profile.profile_text or "").strip():
-        personality_text = profile.profile_text.strip()
+    if payload.personality_id and chain.workspace_id:
+        from app.models.workspace_personality import WorkspacePersonality
+        pers_result = await db.execute(
+            select(WorkspacePersonality).where(
+                WorkspacePersonality.id == payload.personality_id,
+                WorkspacePersonality.workspace_id == chain.workspace_id,
+            )
+        )
+        pers = pers_result.scalar_one_or_none()
+        if pers and (pers.content or "").strip():
+            personality_text = pers.content.strip()
+    if not personality_text:
+        profile_result = await db.execute(
+            select(UserPersonalityProfile).where(UserPersonalityProfile.user_id == user.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile and (profile.profile_text or "").strip():
+            personality_text = profile.profile_text.strip()
 
     github_token = None
     gh_result = await db.execute(

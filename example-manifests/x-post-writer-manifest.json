@@ -1,0 +1,16 @@
+{
+  "name": "X Post Writer",
+  "version": "1.0.0",
+  "schema_version": "1.0.0",
+  "description": "Generic X (Twitter) post writer. Takes any input (topic, notes, summary, prompt) and a personality/voice to create meaningful posts in markdown.\n\nINPUT (plain text): User prompt or topic plus optional labeled sections from upstream nodes (e.g. \"Personality: Marketing voice\", \"Output: Analysis\", \"Slug: context\"). Use all available input. If personality or voice is present, match it. If not, write in a clear, engaging default tone.\n\nBEHAVIOR: Create 1–5 X posts that fit the input. Keep posts concise (280 chars or under when rendered). Use personality to shape tone, humor, and stance. Do not ask for extra input—work with what you have.\n\nOUTPUT: Markdown for display, e.g.:\n\n## Posts\n\n### Post 1\n[post text]\n\n### Post 2\n[post text]\n\nNo JSON. Plain markdown sections so users see nicely formatted posts.",
+  "authors": ["Workmage"],
+  "created_at": "2026-03-10T00:00:00Z",
+  "input_formats": ["text/plain"],
+  "output_formats": ["text/plain", "text/markdown"],
+  "skills": [
+    {"name": "natural_language_processing/natural_language_generation", "id": 202},
+    {"name": "social_media/content_creation", "id": 303}
+  ],
+  "domains": [{"name": "social_media/marketing", "id": 1601}],
+  "locators": [{"type": "source_code", "urls": ["https://github.com/agntcy/ai-market"]}]
+}

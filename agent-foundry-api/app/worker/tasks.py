@@ -708,9 +708,9 @@ def run_chain_task(
     return {"status": "completed", "content": final_content, "usage": agg_usage}
 
 
-def _extract_loop_config(defn: dict) -> tuple[int, int, str, int] | None:
-    """Extract ids_agent_id, analysis_agent_id, analysis_node_id, max_iterations from chain definition with a loop node.
-    Returns (ids_agent_id, analysis_agent_id, analysis_node_id, max_iterations) or None if no valid loop node."""
+def _extract_loop_config(defn: dict) -> tuple[int, str, int, str, int] | None:
+    """Extract ids_agent_id, ids_node_id, analysis_agent_id, analysis_node_id, max_iterations from chain definition with a loop node.
+    Returns (ids_agent_id, ids_node_id, analysis_agent_id, analysis_node_id, max_iterations) or None if no valid loop node."""
     nodes = defn.get("nodes") or []
     edges = defn.get("edges") or []
     node_by_id = {n["id"]: n for n in nodes if n.get("id")}
@@ -729,9 +729,9 @@ def _extract_loop_config(defn: dict) -> tuple[int, int, str, int] | None:
         tgt_node = node_by_id.get(tgt_nid, {}) if tgt_nid else {}
         ids_agent_id = src_node.get("agent_id")
         analysis_agent_id = tgt_node.get("agent_id")
-        if ids_agent_id is None or analysis_agent_id is None or not tgt_nid:
+        if ids_agent_id is None or analysis_agent_id is None or not tgt_nid or not src_nid:
             return None
-        return (ids_agent_id, analysis_agent_id, tgt_nid, max_iterations)
+        return (ids_agent_id, src_nid, analysis_agent_id, tgt_nid, max_iterations)
     return None
 
 
@@ -776,54 +776,171 @@ def run_commit_analysis_loop_task(
         _update_chain_run(run_id, "error", error="Chain has no valid loop node (need exactly one loop with one in, one out agent)")
         return {"status": "error", "content": "Invalid loop chain definition"}
 
-    ids_agent_id, analysis_agent_id, analysis_node_id, max_iterations = config
+    ids_agent_id, ids_node_id, analysis_agent_id, analysis_node_id, max_iterations = config
+    defn = chain.definition or {}
+    nodes = defn.get("nodes") or []
+    edges = defn.get("edges") or []
+    node_by_id = {n["id"]: n for n in nodes if n.get("id")}
+    run_owner = run_owner_id or buyer_id
 
     with Session() as db:
         ids_agent = db.execute(select(Agent).where(Agent.id == ids_agent_id)).scalar_one_or_none()
         analysis_agent = db.execute(select(Agent).where(Agent.id == analysis_agent_id)).scalar_one_or_none()
+    ids_agent_label = (ids_agent.manifest or {}).get("name", f"Agent #{ids_agent_id}") if ids_agent else f"Agent #{ids_agent_id}"
+    analysis_agent_label = (analysis_agent.manifest or {}).get("name", f"Agent #{analysis_agent_id}") if analysis_agent else f"Agent #{analysis_agent_id}"
     if not ids_agent or not analysis_agent:
         _update_chain_run(run_id, "error", error=f"Agent(s) not found: ids={ids_agent_id}, analysis={analysis_agent_id}")
         return {"status": "error", "content": "Agent not found"}
 
+    # Resolve slug/personality inputs that feed into the IDs agent
+    ids_input_parts: list[dict] = []
+    in_edges_ids = [e for e in edges if e.get("target") == ids_node_id]
+    workspace_id = getattr(chain, "workspace_id", None)
+    with Session() as db:
+        for e in in_edges_ids:
+            src_nid = e.get("source")
+            if not src_nid or src_nid not in node_by_id:
+                continue
+            pred_node = node_by_id[src_nid]
+            if pred_node.get("type") == "slug":
+                set_content = (pred_node.get("content") or "").strip()
+                if set_content:
+                    content = set_content
+                elif run_owner and (pred_node.get("slug") or "").strip():
+                    content = _get_saved_content(db, run_owner, pred_node.get("slug", "").strip())
+                else:
+                    content = ""
+                slug_name = pred_node.get("slug") or pred_node.get("label") or src_nid
+                ids_input_parts.append({"content": content, "format": "text/plain", "label": f"Slug: {slug_name}"})
+            elif pred_node.get("type") == "personality":
+                pid = pred_node.get("personality_id")
+                if pid and workspace_id:
+                    from app.models.workspace_personality import WorkspacePersonality
+                    pers = db.execute(
+                        select(WorkspacePersonality).where(
+                            WorkspacePersonality.id == pid,
+                            WorkspacePersonality.workspace_id == workspace_id,
+                        )
+                    ).scalar_one_or_none()
+                    if pers and (pers.content or "").strip():
+                        ids_input_parts.append({
+                            "content": pers.content.strip(),
+                            "format": "text/plain",
+                            "label": f"Personality: {pers.name}",
+                        })
+    if user_input and user_input.strip():
+        ids_input_parts.append({"content": user_input.strip(), "format": "text/plain", "label": "User input"})
+
+    import time
+    t0_ids = time.perf_counter()
     ids_content, ids_usage = run_agent_in_sandbox(
         manifest=ids_agent.manifest,
-        user_input=user_input,
+        user_input="" if ids_input_parts else user_input,
         model=model,
         api_key=api_key,
         github_token=github_token,
         extra_env=workspace_secrets,
+        input_parts=ids_input_parts if ids_input_parts else None,
     )
+    duration_ids_ms = int((time.perf_counter() - t0_ids) * 1000)
+    audit_trail_loop: list[dict] = [
+        _audit_entry(
+            ids_node_id,
+            ids_agent_label,
+            "agent",
+            "ok",
+            output_preview=(ids_content or "")[:AUDIT_PREVIEW_MAX] if ids_content else "",
+            usage=ids_usage,
+            duration_ms=duration_ids_ms,
+        )
+    ]
+
     if isinstance(ids_content, str) and any(
         x in ids_content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
     ):
-        _update_chain_run(run_id, "error", error=ids_content)
+        audit_trail_loop[-1] = _audit_entry(
+            ids_node_id, ids_agent_label, "agent", "error",
+            output_preview=(ids_content or "")[:AUDIT_PREVIEW_MAX], usage=ids_usage, duration_ms=duration_ids_ms
+        )
+        _update_chain_run(run_id, "error", error=ids_content, audit_trail=audit_trail_loop)
         return {"status": "error", "content": ids_content}
 
     lines = [ln.strip() for ln in (ids_content or "").splitlines() if ln.strip()]
     all_valid_shas = [ln for ln in lines if re.match(r"^[a-fA-F0-9]{7,40}$", ln)]
     shas = all_valid_shas[:max_iterations]
     total_valid = len(all_valid_shas)
+    agg_usage = {"prompt_tokens": ids_usage.get("prompt_tokens", 0) or 0, "completion_tokens": ids_usage.get("completion_tokens", 0) or 0}
+
+    if not shas:
+        err_msg = (
+            f"IDs agent did not return valid commit SHAs (parsed 0 from {len(lines)} lines). "
+            "Check that it received valid owner/repo and date range, and that it outputs one SHA per line."
+        )
+        audit_trail_loop.append(
+            _audit_entry(
+                analysis_node_id,
+                f"{analysis_agent_label} (loop)",
+                "agent",
+                "error",
+                output_preview=err_msg,
+            )
+        )
+        _update_chain_run(
+            run_id,
+            "error",
+            error=err_msg + f"\n\nIDs agent output:\n{(ids_content or '')[:1000]}",
+            usage=agg_usage,
+            audit_trail=audit_trail_loop,
+        )
+        return {"status": "error", "content": err_msg}
 
     parts: list[str] = []
-    agg_usage = {"prompt_tokens": ids_usage.get("prompt_tokens", 0) or 0, "completion_tokens": ids_usage.get("completion_tokens", 0) or 0}
-    for sha in shas[:max_iterations]:
-        analysis_input = f"{sha}\n\n{user_input}" if user_input.strip() else sha
+    for sha in shas:
+        analysis_input_parts = list(ids_input_parts)
+        analysis_input_parts.append({"content": sha, "format": "text/plain", "label": "Commit SHA (analyze this commit)"})
+        if user_input and user_input.strip():
+            analysis_input_parts.append({"content": user_input.strip(), "format": "text/plain", "label": "User input"})
+        t0_ana = time.perf_counter()
         content, usage = run_agent_in_sandbox(
             manifest=analysis_agent.manifest,
-            user_input=analysis_input,
+            user_input="",
             model=model,
             api_key=api_key,
             github_token=github_token,
             extra_env=workspace_secrets,
+            input_parts=analysis_input_parts,
         )
         if usage:
             agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
             agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
+        duration_ana_ms = int((time.perf_counter() - t0_ana) * 1000)
         if isinstance(content, str) and any(
             x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
         ):
-            _update_chain_run(run_id, "error", error=content)
+            audit_trail_loop.append(
+                _audit_entry(
+                    analysis_node_id,
+                    f"{analysis_agent_label} (commit {sha})",
+                    "agent",
+                    "error",
+                    output_preview=(content or "")[:AUDIT_PREVIEW_MAX],
+                    usage=usage,
+                    duration_ms=duration_ana_ms,
+                )
+            )
+            _update_chain_run(run_id, "error", error=content, audit_trail=audit_trail_loop)
             return {"status": "error", "content": content}
+        audit_trail_loop.append(
+            _audit_entry(
+                analysis_node_id,
+                f"{analysis_agent_label} (commit {sha})",
+                "agent",
+                "ok",
+                output_preview=(content or "")[:AUDIT_PREVIEW_MAX] if content else "",
+                usage=usage,
+                duration_ms=duration_ana_ms,
+            )
+        )
         parts.append(f"## Commit {sha}\n\n{(content or '').strip()}")
 
     concatenated_analysis = "\n\n---\n\n".join(parts)
@@ -889,7 +1006,7 @@ def run_commit_analysis_loop_task(
                 for p in personalities:
                     personality_labels_by_id[p.id] = p.name
 
-        audit_trail_down: list[dict] = []
+        audit_trail_down: list[dict] = list(audit_trail_loop)
 
         for nid in order:
             if nid == analysis_node_id:
@@ -1012,7 +1129,7 @@ def run_commit_analysis_loop_task(
         _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage, audit_trail=audit_trail_down)
     else:
         final_content = concatenated_analysis
-        _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
+        _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage, audit_trail=audit_trail_loop)
 
     if buyer_id:
         with Session() as db:

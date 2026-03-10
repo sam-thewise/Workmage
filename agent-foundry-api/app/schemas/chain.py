@@ -111,3 +111,4 @@ class ChainRunRequest(BaseModel):
     use_byok: bool = False
     run_type: str | None = None  # "setup" for first-run lane only; default = main lane
     input_run_refs: list[InputRunRef] | None = None  # prior runs to inject as input (e.g. for comparison)
+    personality_id: int | None = None  # workspace personality; if omitted, use user's personal profile

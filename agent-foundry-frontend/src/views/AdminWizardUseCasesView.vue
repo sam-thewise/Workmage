@@ -347,6 +347,7 @@ const validationOptions = [
 
 const requiredConfigOptions = [
   { title: 'GitHub token', value: 'github_token', subtitle: 'For chains that use GitHub MCP (commits, files)' },
+  { title: 'Personality', value: 'personality', subtitle: 'For personality-driven workflows (voice / tone)' },
 ]
 
 function injectLabel(v) {

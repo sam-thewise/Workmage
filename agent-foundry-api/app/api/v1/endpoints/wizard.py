@@ -1,7 +1,7 @@
 """Wizard endpoints: use cases for config-driven setup wizard."""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_admin_or_moderator
@@ -65,22 +65,56 @@ def _slug_valid(slug: str) -> bool:
     return slug.replace("_", "").replace("-", "").isalnum()
 
 
-KNOWN_CONFIG_KEYS = frozenset({"github_token"})
-CONFIG_LABELS = {"github_token": "GitHub token", "llm_key": "LLM API key"}
+KNOWN_CONFIG_KEYS = frozenset({"github_token", "personality"})
+CONFIG_LABELS = {"github_token": "GitHub token", "personality": "Personality / voice", "llm_key": "LLM API key"}
 
 
-async def _check_config_status(db: AsyncSession, user_id: int, keys: list[str]) -> dict[str, bool]:
-    """Check which config keys the user has. Returns {key: has_config} for known keys."""
+async def _check_config_status(
+    db: AsyncSession, user_id: int, keys: list[str], chain_id: int | None = None
+) -> dict[str, bool]:
+    """Check which config keys the user has. Returns {key: has_config} for known keys. For personality: passes if user has personal profile OR chain's workspace has at least one personality."""
+    from app.models.workspace_member import WorkspaceMember
+    from app.models.workspace_personality import WorkspacePersonality
+
     out: dict[str, bool] = {}
     for k in keys:
         if k not in KNOWN_CONFIG_KEYS:
             out[k] = False
             continue
         if k == "github_token":
-            from sqlalchemy import select
             from app.models.user_github_token import UserGitHubToken
             r = await db.execute(select(UserGitHubToken).where(UserGitHubToken.user_id == user_id))
             out[k] = r.scalar_one_or_none() is not None
+        elif k == "personality":
+            from app.models.user_personality import UserPersonalityProfile
+            r = await db.execute(select(UserPersonalityProfile).where(UserPersonalityProfile.user_id == user_id))
+            profile = r.scalar_one_or_none()
+            has_personal = profile is not None and bool((profile.profile_text or "").strip())
+            has_workspace = False
+            if chain_id:
+                chain = await db.execute(
+                    select(AgentChain).where(AgentChain.id == chain_id)
+                )
+                c = chain.scalar_one_or_none()
+                if c and c.workspace_id:
+                    member = await db.execute(
+                        select(WorkspaceMember).where(
+                            WorkspaceMember.workspace_id == c.workspace_id,
+                            WorkspaceMember.user_id == user_id,
+                        )
+                    )
+                    if member.scalar_one_or_none():
+                        pers = await db.execute(
+                            select(WorkspacePersonality).where(
+                                WorkspacePersonality.workspace_id == c.workspace_id,
+                                or_(
+                                    WorkspacePersonality.chain_id == chain_id,
+                                    WorkspacePersonality.chain_id.is_(None),
+                                ),
+                            ).limit(1)
+                        )
+                        has_workspace = pers.scalar_one_or_none() is not None
+            out[k] = has_personal or has_workspace
         else:
             out[k] = False
     return out
@@ -89,13 +123,73 @@ async def _check_config_status(db: AsyncSession, user_id: int, keys: list[str]) 
 @router.get("/config-status")
 async def get_config_status(
     keys: str = "github_token",
+    chain_id: int | None = None,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Check whether the current user has the requested config (e.g. github_token). keys=github_token or comma-separated."""
+    """Check whether the current user has the requested config. keys=github_token or comma-separated. chain_id optional for personality (pass when checking personality for a specific chain)."""
     key_list = [k.strip() for k in keys.split(",") if k.strip()]
-    status = await _check_config_status(db, user.id, key_list)
+    status = await _check_config_status(db, user.id, key_list, chain_id)
     return status
+
+
+class PersonalityOption(BaseModel):
+    id: int
+    name: str
+
+
+class PersonalityOptionsResponse(BaseModel):
+    personal: dict  # { "available": bool }
+    workspace: list[PersonalityOption]
+
+
+@router.get("/personality-options", response_model=PersonalityOptionsResponse)
+async def get_personality_options(
+    chain_id: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List personality options for a chain: personal profile and workspace personalities (when chain belongs to a workspace user can access)."""
+    from app.models.workspace_member import WorkspaceMember
+    from app.models.workspace_personality import WorkspacePersonality
+    from app.models.user_personality import UserPersonalityProfile
+
+    chain_result = await db.execute(select(AgentChain).where(AgentChain.id == chain_id))
+    chain = chain_result.scalar_one_or_none()
+    if not chain:
+        raise HTTPException(404, "Chain not found")
+
+    profile_result = await db.execute(
+        select(UserPersonalityProfile).where(UserPersonalityProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    personal_available = profile is not None and bool((profile.profile_text or "").strip())
+
+    workspace_list: list[PersonalityOption] = []
+    if chain.workspace_id:
+        member_result = await db.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == chain.workspace_id,
+                WorkspaceMember.user_id == user.id,
+            )
+        )
+        if member_result.scalar_one_or_none():
+            pers_result = await db.execute(
+                select(WorkspacePersonality).where(
+                    WorkspacePersonality.workspace_id == chain.workspace_id,
+                    or_(
+                        WorkspacePersonality.chain_id == chain_id,
+                        WorkspacePersonality.chain_id.is_(None),
+                    ),
+                ).order_by(WorkspacePersonality.name)
+            )
+            for p in pers_result.scalars().all():
+                workspace_list.append(PersonalityOption(id=p.id, name=p.name))
+
+    return PersonalityOptionsResponse(
+        personal={"available": personal_available},
+        workspace=workspace_list,
+    )
 
 
 @router.get("/status")

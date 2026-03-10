@@ -37,18 +37,30 @@
               <h4 class="text-subtitle-1 mb-2">Required setup</h4>
               <p class="text-caption text-medium-emphasis mb-3">This use case needs the following configured before you can run it.</p>
               <div class="d-flex flex-column gap-2">
-                <div v-for="key in selectedUseCase.required_config" :key="key" class="d-flex align-center gap-2">
+                <div v-for="key in selectedUseCase.required_config" :key="key" class="d-flex align-center gap-2 flex-wrap">
                   <v-icon v-if="configStatus[key]" color="success" size="small">mdi-check-circle</v-icon>
                   <v-icon v-else color="warning" size="small">mdi-alert-circle</v-icon>
                   <span class="text-body-2">{{ configLabel(key) }}</span>
-                  <template v-if="!configStatus[key]">
+                  <template v-if="key === 'personality' && configStatus[key]">
+                    <v-select
+                      v-model="selectedPersonality"
+                      :items="personalitySelectItems"
+                      item-title="title"
+                      item-value="value"
+                      density="compact"
+                      hide-details
+                      style="max-width: 240px;"
+                      label="Use"
+                    />
+                  </template>
+                  <template v-else-if="!configStatus[key]">
                     <v-btn size="small" variant="tonal" :to="configLink(key)" target="_blank" rel="noopener">Configure</v-btn>
                   </template>
                 </div>
               </div>
               <p v-if="!hasRequiredConfig" class="text-caption text-warning mt-2 mb-0 d-flex align-center gap-2">
                 Add the required config above, then
-                <v-btn size="x-small" variant="text" @click="fetchConfigStatus(selectedUseCase.required_config)">Re-check</v-btn>
+                <v-btn size="x-small" variant="text" @click="fetchConfigStatus">Re-check</v-btn>
                 to update status.
               </p>
             </div>
@@ -145,10 +157,24 @@ const runByok = ref(false)
 const running = ref(false)
 const runResult = ref(null)
 const configStatus = ref({})
+const personalityOptions = ref({ personal: { available: false }, workspace: [] })
+const selectedPersonality = ref('personal')
 let pollInterval = null
 
-const CONFIG_LABELS = { github_token: 'GitHub token' }
-const CONFIG_LINKS = { github_token: '/settings/keys' }
+const personalitySelectItems = computed(() => {
+  const opts = personalityOptions.value
+  const items = []
+  if (opts.personal?.available) {
+    items.push({ title: 'My voice (personal)', value: 'personal' })
+  }
+  for (const p of opts.workspace || []) {
+    items.push({ title: p.name, value: p.id })
+  }
+  return items
+})
+
+const CONFIG_LABELS = { github_token: 'GitHub token', personality: 'Personality / voice' }
+const CONFIG_LINKS = { github_token: '/settings/keys', personality: '/dashboard/personality' }
 
 const modelOptions = [
   { title: 'OpenAI GPT-5.2', value: 'openai/gpt-5.2' },
@@ -200,23 +226,52 @@ function paramRules(p) {
 function selectUseCase(uc) {
   selectedUseCase.value = uc
   paramValues.value = {}
+  selectedPersonality.value = 'personal'
   const params = uc.params || []
   for (const p of params) {
     paramValues.value[p.slug] = p.default ?? ''
   }
-  fetchConfigStatus(uc.required_config || [])
+  fetchConfigStatus()
+  loadPersonalityOptions()
 }
 
-async function fetchConfigStatus(keys) {
+async function fetchConfigStatus() {
+  const uc = selectedUseCase.value
+  const keys = uc?.required_config || []
   if (!keys.length) {
     configStatus.value = {}
     return
   }
   try {
-    const { data } = await api.get('/wizard/config-status', { params: { keys: keys.join(',') } })
+    const params = { keys: keys.join(',') }
+    if (uc?.chain_id && keys.includes('personality')) {
+      params.chain_id = uc.chain_id
+    }
+    const { data } = await api.get('/wizard/config-status', { params })
     configStatus.value = data || {}
   } catch {
     configStatus.value = Object.fromEntries(keys.map((k) => [k, false]))
+  }
+}
+
+async function loadPersonalityOptions() {
+  const uc = selectedUseCase.value
+  if (!uc?.chain_id || !uc?.required_config?.includes('personality')) {
+    personalityOptions.value = { personal: { available: false }, workspace: [] }
+    return
+  }
+  try {
+    const { data } = await api.get('/wizard/personality-options', { params: { chain_id: uc.chain_id } })
+    const opts = data || { personal: { available: false }, workspace: [] }
+    personalityOptions.value = opts
+    const validValues = new Set()
+    if (opts.personal?.available) validValues.add('personal')
+    for (const p of opts.workspace || []) validValues.add(p.id)
+    if (!validValues.has(selectedPersonality.value)) {
+      selectedPersonality.value = opts.personal?.available ? 'personal' : (opts.workspace?.[0]?.id ?? 'personal')
+    }
+  } catch {
+    personalityOptions.value = { personal: { available: false }, workspace: [] }
   }
 }
 
@@ -260,11 +315,16 @@ async function submitAndRun() {
       }
     }
     const userInput = uc.inject_as === 'user_input' ? buildUserInput() : ''
-    const { data } = await api.post(`/chains/${uc.chain_id}/run`, {
+    const payload = {
       user_input: userInput,
       model: runModel.value,
       use_byok: runByok.value,
-    })
+    }
+    const pId = selectedPersonality.value
+    if (pId !== 'personal' && pId != null) {
+      payload.personality_id = typeof pId === 'number' ? pId : parseInt(pId, 10)
+    }
+    const { data } = await api.post(`/chains/${uc.chain_id}/run`, payload)
     if (data.job_id) {
       pollInterval = setInterval(() => pollRun(data.job_id, data.run_id), 1500)
     } else {
@@ -313,7 +373,8 @@ watch(selectedUseCase, (uc) => {
 })
 watch(step, (s) => {
   if (s === 2 && selectedUseCase.value?.required_config?.length) {
-    fetchConfigStatus(selectedUseCase.value.required_config)
+    fetchConfigStatus()
+    loadPersonalityOptions()
   }
 })
 

@@ -1,6 +1,6 @@
 """Workspace, members, and secrets endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_workspace_member, require_workspace_role
@@ -376,7 +376,13 @@ async def list_personalities(
         .order_by(WorkspacePersonality.name)
     )
     if chain_id is not None:
-        q = q.where(WorkspacePersonality.chain_id == chain_id)
+        # Include chain-specific personalities AND workspace-level (chain_id=NULL)
+        q = q.where(
+            or_(
+                WorkspacePersonality.chain_id == chain_id,
+                WorkspacePersonality.chain_id.is_(None),
+            )
+        )
     result = await db.execute(q)
     personalities = result.scalars().all()
     return [
