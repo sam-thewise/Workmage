@@ -5,17 +5,19 @@ from pydantic import BaseModel, Field
 
 
 class ChainNode(BaseModel):
-    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug; approval nodes have type='approval'; loop nodes have type='loop'."""
+    """Node in chain definition. Agent nodes have agent_id; slug nodes have type='slug' and slug; approval nodes have type='approval'; loop nodes have type='loop'; personality nodes have type='personality' and personality_id."""
     id: str
-    agent_id: int | None = None  # None for slug, approval, loop nodes
+    agent_id: int | None = None  # None for slug, approval, loop, personality nodes
     position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
     role: str | None = None
-    type: str | None = None  # "slug" | "approval" | "loop" | None (agent)
+    type: str | None = None  # "slug" | "approval" | "loop" | "personality" | None (agent)
     slug: str | None = None
     content: str | None = None  # optional fixed content for slug nodes ("set slug content")
     lane: str | None = None  # "setup" | "main"
     save_to_slug: str | None = None  # for setup-lane agent nodes
+    save_to_personality_id: int | None = None  # for setup-lane agent nodes: save output to WorkspacePersonality
     input_from_slug: str | None = None  # prefill agent input from saved output (optional)
+    personality_id: int | None = None  # for personality nodes: reference WorkspacePersonality
     title: str | None = None  # for approval nodes: optional title shown with the result
     message: str | None = None  # for approval nodes: optional message shown with the result
     max_iterations: int | None = None  # for loop nodes: max items per run (default 5)
@@ -80,6 +82,7 @@ class ChainResponse(BaseModel):
     """Chain response with optional agent details."""
 
     id: int
+    workspace_id: int | None = None
     name: str
     description: str | None = None
     price_cents: int = 0

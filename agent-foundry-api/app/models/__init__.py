@@ -29,6 +29,7 @@ from app.models.agent_run import AgentRun
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember, WorkspaceRole
 from app.models.workspace_secret import WorkspaceSecret
+from app.models.workspace_personality import WorkspacePersonality
 from app.models.run_share_link import RunShareLink
 from app.models.wizard_use_case import WizardUseCase
 
@@ -67,6 +68,7 @@ __all__ = [
     "WorkspaceMember",
     "WorkspaceRole",
     "WorkspaceSecret",
+    "WorkspacePersonality",
     "RunShareLink",
     "WizardUseCase",
 ]

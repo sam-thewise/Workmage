@@ -922,6 +922,7 @@ async def run_chain(
             run_owner_id=user.id,
             github_token=github_token,
             run_id=run.id,
+            personality_text=personality_text,
         )
     else:
         task = run_chain_task.delay(

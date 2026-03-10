@@ -51,7 +51,7 @@
         <p class="hint">Add a slug node; connect it to an agent's input to use saved output.</p>
         <div class="d-flex gap-1 mb-2">
           <v-text-field v-model="newSlugName" placeholder="slug name" density="compact" hide-details class="slug-input" />
-          <v-btn size="small" variant="tonal" :disabled="!newSlugName.trim()" @click="addSlugNode">Add</v-btn>
+          <v-btn size="small" variant="tonal" class="palette-btn" :disabled="!newSlugName.trim()" @click="addSlugNode">Add</v-btn>
         </div>
         <ul v-if="savedSlugs.length" class="slug-palette">
           <li
@@ -65,10 +65,13 @@
         </ul>
         <h3 class="mt-3">Approval</h3>
         <p class="hint">Pause the chain for user review before continuing.</p>
-        <v-btn size="small" variant="tonal" color="primary" block class="mt-1" @click="addApprovalNode">Add approval node</v-btn>
+        <v-btn size="small" variant="tonal" color="primary" block class="mt-1 palette-btn" @click="addApprovalNode">Add approval node</v-btn>
         <h3 class="mt-3">Loop</h3>
         <p class="hint">Run the second agent once per item (max 5). Connect: [IDs agent] → Loop → [Analysis agent].</p>
-        <v-btn size="small" variant="tonal" color="primary" block class="mt-1" @click="addLoopNode">Add loop node</v-btn>
+        <v-btn size="small" variant="tonal" color="primary" block class="mt-1 palette-btn" @click="addLoopNode">Add loop node</v-btn>
+        <h3 class="mt-3">Personality</h3>
+        <p class="hint">Tone tools: add personality nodes, connect to agents. Pick a personality in node options.</p>
+        <v-btn size="small" variant="tonal" color="primary" block class="mt-1 palette-btn" :disabled="!personalityWorkspaceId" @click="addPersonalityNode">Add personality node</v-btn>
       </div>
       <div v-if="selectedNode" class="node-options pa-3" style="background: var(--wm-bg-soft); border-radius: 8px; border: 1px solid var(--wm-border);">
         <h4 class="text-subtitle-2 mb-2">Node options</h4>
@@ -86,9 +89,24 @@
           <v-select v-model="selectedNode.data.parse_as" :items="parseAsOptions" item-title="title" item-value="value" label="Parse output as" density="compact" hide-details class="mt-2" @update:model-value="touchNodes" />
           <p class="text-caption text-medium-emphasis mt-1">Source agent outputs items (one per line by default). Target agent runs once per item.</p>
         </template>
+        <template v-else-if="selectedNode.type === 'personality'">
+          <v-select
+            v-model="selectedNode.data.personality_id"
+            :items="savedPersonalities"
+            item-title="name"
+            item-value="id"
+            label="Personality"
+            density="compact"
+            hide-details
+            placeholder="Select personality"
+            @update:model-value="onPersonalitySelect"
+          />
+          <p v-if="!personalityWorkspaceId" class="text-caption text-warning mt-1">Save this chain in a workspace to use personalities.</p>
+        </template>
         <template v-else>
           <v-select v-model="selectedNode.data.lane" :items="laneOptions" item-title="title" item-value="value" label="Lane" density="compact" hide-details class="mb-2" @update:model-value="touchNodes" />
-          <v-text-field v-if="selectedNode.data.lane === 'setup'" v-model="selectedNode.data.save_to_slug" label="Save output to slug" density="compact" hide-details placeholder="e.g. personality" @update:model-value="touchNodes" />
+          <v-text-field v-if="selectedNode.data.lane === 'setup'" v-model="selectedNode.data.save_to_slug" label="Save output to slug" density="compact" hide-details placeholder="e.g. personality" class="mb-2" @update:model-value="touchNodes" />
+          <v-select v-if="selectedNode.data.lane === 'setup' && personalityWorkspaceId" v-model="selectedNode.data.save_to_personality_id" :items="savedPersonalities" item-title="name" item-value="id" label="Or save to personality" density="compact" hide-details placeholder="Select personality" clearable @update:model-value="touchNodes" />
           <v-text-field v-model="selectedNode.data.input_from_slug" label="Input from slug (optional)" density="compact" hide-details placeholder="e.g. personality" class="mt-2" @update:model-value="touchNodes" />
           <p class="text-caption text-medium-emphasis mt-1">Prefill this agent's input from saved output (same as connecting a slug node).</p>
         </template>
@@ -162,6 +180,7 @@ import AgentNode from '@/components/AgentNode.vue'
 import SlugNode from '@/components/SlugNode.vue'
 import ApprovalNode from '@/components/ApprovalNode.vue'
 import LoopNode from '@/components/LoopNode.vue'
+import PersonalityNode from '@/components/PersonalityNode.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import '@vue-flow/core/dist/style.css'
@@ -204,9 +223,11 @@ let pollInterval = null
 const compatibilityCache = ref({})
 const connectStartSource = ref(null)
 
-const nodeTypes = { agent: AgentNode, slug: SlugNode, approval: ApprovalNode, loop: LoopNode }
+const nodeTypes = { agent: AgentNode, slug: SlugNode, approval: ApprovalNode, loop: LoopNode, personality: PersonalityNode }
 const newSlugName = ref('')
 const savedSlugs = ref([])
+const chainWorkspaceId = ref(null)
+const savedPersonalities = ref([])
 const laneOptions = [
   { title: 'Main', value: 'main' },
   { title: 'Setup (first run)', value: 'setup' },
@@ -218,6 +239,8 @@ const parseAsOptions = [
 ]
 
 const selectedNode = computed(() => nodes.value.find(n => n.selected) || null)
+const workspaceStore = useWorkspaceStore()
+const personalityWorkspaceId = computed(() => chainWorkspaceId.value ?? workspaceStore.currentWorkspaceId)
 function touchNodes() {
   nodes.value = [...nodes.value]
 }
@@ -275,6 +298,7 @@ async function loadChain() {
   if (!chainId.value) return
   try {
     const { data } = await api.get(`/chains/${chainId.value}`)
+    chainWorkspaceId.value = data.workspace_id ?? null
     chainName.value = data.name
     chainDescription.value = data.description || ''
     chainPriceCents.value = data.price_cents || 0
@@ -319,6 +343,18 @@ async function loadChain() {
           dragHandle: '.loop-node-content',
         }
       }
+      if (n.type === 'personality') {
+        return {
+          id: n.id,
+          type: 'personality',
+          position: n.position || { x: 0, y: 0 },
+          data: {
+            personality_id: n.personality_id,
+            personalityName: getPersonalityName(n.personality_id),
+          },
+          dragHandle: '.personality-node-content',
+        }
+      }
       return {
         id: n.id,
         type: 'agent',
@@ -329,6 +365,7 @@ async function loadChain() {
           isEntry: !targetIds.has(n.id),
           lane: n.lane || 'main',
           save_to_slug: n.save_to_slug || '',
+          save_to_personality_id: n.save_to_personality_id ?? null,
           input_from_slug: n.input_from_slug || '',
         },
         dragHandle: '.agent-node-content',
@@ -341,10 +378,40 @@ async function loadChain() {
     }))
     const numIds = (defn.nodes || []).filter(n => n.id && String(n.id).startsWith('n')).map(n => parseInt(String(n.id).slice(1), 10)).filter(n => !isNaN(n))
     if (numIds.length) nodeIdCounter = Math.max(nodeIdCounter, ...numIds)
+    const wsId = chainWorkspaceId.value ?? useWorkspaceStore().currentWorkspaceId
+    if (wsId) {
+      await loadPersonalities()
+      nodes.value = nodes.value.map(n => {
+        if (n.type === 'personality' && n.data?.personality_id) {
+          return { ...n, data: { ...n.data, personalityName: getPersonalityName(n.data.personality_id) } }
+        }
+        return n
+      })
+    }
   } catch {
     nodes.value = []
     edges.value = []
   }
+}
+
+async function loadPersonalities() {
+  const wsId = personalityWorkspaceId.value
+  if (!wsId) {
+    savedPersonalities.value = []
+    return
+  }
+  try {
+    const params = chainId.value ? { chain_id: chainId.value } : {}
+    const { data } = await api.get(`/workspaces/${wsId}/personalities`, { params })
+    savedPersonalities.value = data || []
+  } catch {
+    savedPersonalities.value = []
+  }
+}
+
+function getPersonalityName(personalityId) {
+  const p = savedPersonalities.value.find(x => x.id === personalityId)
+  return p ? p.name : (personalityId ? `#${personalityId}` : 'unnamed')
 }
 
 function getAgentLabel(agentId, agents) {
@@ -370,6 +437,7 @@ function addAgentNode(a, position) {
       isEntry,
       lane: 'main',
       save_to_slug: '',
+      save_to_personality_id: null,
       input_from_slug: '',
     },
     dragHandle: '.agent-node-content',
@@ -428,6 +496,26 @@ function addLoopNode() {
   }]
 }
 
+function addPersonalityNode() {
+  const id = `n${++nodeIdCounter}`
+  const defaultPos = { x: 100 + nodes.value.length * 200, y: 150 }
+  nodes.value = [...nodes.value, {
+    id,
+    type: 'personality',
+    position: defaultPos,
+    data: { personality_id: null, personalityName: 'Select personality' },
+    dragHandle: '.personality-node-content',
+  }]
+}
+
+function onPersonalitySelect(personalityId) {
+  if (selectedNode.value?.type === 'personality' && selectedNode.value.data) {
+    selectedNode.value.data.personality_id = personalityId
+    selectedNode.value.data.personalityName = getPersonalityName(personalityId)
+    touchNodes()
+  }
+}
+
 function refreshEntryBadges() {
   const targetIds = new Set(edges.value.map(e => e.target))
   nodes.value = nodes.value.map(n => ({
@@ -482,6 +570,8 @@ function isValidConnection(params) {
   const tgtNode = nodes.value.find(n => n.id === params.target)
   if (!srcNode || !tgtNode) return false
   if (tgtNode.type === 'slug') return false
+  if (srcNode.type === 'personality') return !!tgtNode.data?.agent_id || tgtNode.type === 'approval'
+  if (tgtNode.type === 'personality') return false
   if (srcNode.type === 'approval' && tgtNode.type === 'approval') return false
   if (srcNode.type === 'approval') return true
   if (tgtNode.type === 'approval') return true
@@ -561,6 +651,14 @@ function buildDefinition() {
           parse_as: n.data?.parse_as || 'lines',
         }
       }
+      if (n.type === 'personality') {
+        return {
+          id: n.id,
+          type: 'personality',
+          personality_id: n.data?.personality_id || null,
+          position: n.position,
+        }
+      }
       return {
         id: n.id,
         agent_id: n.data?.agent_id,
@@ -568,6 +666,7 @@ function buildDefinition() {
         role: !targetIds.has(n.id) ? 'entry' : undefined,
         lane: n.data?.lane || 'main',
         save_to_slug: n.data?.lane === 'setup' ? (n.data?.save_to_slug || '').trim() || undefined : undefined,
+        save_to_personality_id: n.data?.lane === 'setup' ? n.data?.save_to_personality_id ?? undefined : undefined,
         input_from_slug: (n.data?.input_from_slug || '').trim() || undefined,
       }
     }),
@@ -722,13 +821,17 @@ onMounted(async () => {
     router.replace('/dashboard')
     return
   }
+  await workspaceStore.fetchWorkspaces()
   loadAvailableAgents()
   loadSavedSlugs()
-  loadChain()
+  await loadChain()
+  if (personalityWorkspaceId.value) loadPersonalities()
 })
-watch(() => route.params.id, (id) => {
+watch(() => route.params.id, async (id) => {
   chainId.value = id && id !== 'new' ? parseInt(id, 10) : null
-  loadChain()
+  chainWorkspaceId.value = null
+  await loadChain()
+  if (personalityWorkspaceId.value) loadPersonalities()
 })
 </script>
 
@@ -787,6 +890,19 @@ watch(() => route.params.id, (id) => {
 .empty { font-size: 0.8rem; color: var(--wm-text-muted); }
 .empty a { color: var(--wm-accent); }
 .slug-input { flex: 1; min-width: 0; }
+
+/* Palette buttons: white background */
+.palette-btn {
+  background-color: #fff !important;
+  color: rgba(0, 0, 0, 0.87) !important;
+}
+.palette-btn:not(.v-btn--disabled):hover {
+  background-color: #f5f5f5 !important;
+}
+.palette-btn.v-btn--disabled {
+  background-color: rgba(255, 255, 255, 0.5) !important;
+  color: rgba(0, 0, 0, 0.38) !important;
+}
 .slug-palette { list-style: none; padding: 0; }
 .node-options {
   flex-shrink: 0;

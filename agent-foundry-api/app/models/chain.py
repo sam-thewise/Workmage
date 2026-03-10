@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.models.chain_run import ChainRun
     from app.models.workspace import Workspace
     from app.models.workspace_secret import WorkspaceSecret
+    from app.models.workspace_personality import WorkspacePersonality
 
 
 class ChainStatus(str, enum.Enum):
@@ -80,4 +81,7 @@ class AgentChain(Base):
     )
     workspace_secrets: Mapped[list["WorkspaceSecret"]] = relationship(
         "WorkspaceSecret", back_populates="chain", foreign_keys="WorkspaceSecret.chain_id"
+    )
+    workspace_personalities: Mapped[list["WorkspacePersonality"]] = relationship(
+        "WorkspacePersonality", back_populates="chain", foreign_keys="WorkspacePersonality.chain_id"
     )

@@ -6,11 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_workspace_member, require_workspace_role
 from app.db.session import get_db
 from app.core.key_encryption import encrypt_api_key
-from app.core.workspace_permissions import can_manage_secrets
+from app.core.workspace_permissions import can_manage_secrets, can_edit_teams
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_secret import WorkspaceSecret
+from app.models.workspace_personality import WorkspacePersonality
 from app.schemas.workspace import (
     WorkspaceCreate,
     WorkspaceUpdate,
@@ -21,6 +22,10 @@ from app.schemas.workspace import (
     MemberUpdateRole,
     SecretCreate,
     SecretListItem,
+    PersonalityCreate,
+    PersonalityUpdate,
+    PersonalityListItem,
+    PersonalityResponse,
 )
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -350,5 +355,151 @@ async def delete_secret(
     if not secret:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Secret not found")
     await db.delete(secret)
+    await db.commit()
+    return {"ok": True}
+
+
+# ---- Personalities ----
+
+@router.get("/{workspace_id}/personalities", response_model=list[PersonalityListItem])
+async def list_personalities(
+    workspace_id: int,
+    chain_id: int | None = Query(None, description="Filter by chain (team-level) or omit for workspace-level"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List workspace personalities. Optional chain_id filter. Members with can_edit_teams can list."""
+    await require_workspace_role(db, workspace_id, user, ["owner", "admin", "member", "viewer"])
+    q = (
+        select(WorkspacePersonality)
+        .where(WorkspacePersonality.workspace_id == workspace_id)
+        .order_by(WorkspacePersonality.name)
+    )
+    if chain_id is not None:
+        q = q.where(WorkspacePersonality.chain_id == chain_id)
+    result = await db.execute(q)
+    personalities = result.scalars().all()
+    return [
+        PersonalityListItem(
+            id=p.id,
+            name=p.name,
+            chain_id=p.chain_id,
+            source=p.source,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+        for p in personalities
+    ]
+
+
+@router.post("/{workspace_id}/personalities", response_model=PersonalityResponse)
+async def create_personality(
+    workspace_id: int,
+    body: PersonalityCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create personality config. Owner/Admin/Member with can_edit_teams."""
+    member = await require_workspace_role(db, workspace_id, user, ["owner", "admin", "member"])
+    if not can_edit_teams(member.role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot edit personalities")
+    q = select(WorkspacePersonality).where(
+        WorkspacePersonality.workspace_id == workspace_id,
+        WorkspacePersonality.name == body.name,
+    )
+    if body.chain_id is not None:
+        q = q.where(WorkspacePersonality.chain_id == body.chain_id)
+    else:
+        q = q.where(WorkspacePersonality.chain_id.is_(None))
+    existing = await db.execute(q)
+    if existing.scalar_one_or_none():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Personality '{body.name}' already exists")
+    personality = WorkspacePersonality(
+        workspace_id=workspace_id,
+        chain_id=body.chain_id,
+        name=body.name,
+        content=body.content or "",
+        source="manual",
+    )
+    db.add(personality)
+    await db.commit()
+    await db.refresh(personality)
+    return personality
+
+
+@router.get("/{workspace_id}/personalities/{personality_id}", response_model=PersonalityResponse)
+async def get_personality(
+    workspace_id: int,
+    personality_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get one personality by id."""
+    await require_workspace_role(db, workspace_id, user, ["owner", "admin", "member", "viewer"])
+    result = await db.execute(
+        select(WorkspacePersonality).where(
+            WorkspacePersonality.id == personality_id,
+            WorkspacePersonality.workspace_id == workspace_id,
+        )
+    )
+    personality = result.scalar_one_or_none()
+    if not personality:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Personality not found")
+    return personality
+
+
+@router.put("/{workspace_id}/personalities/{personality_id}", response_model=PersonalityResponse)
+async def update_personality(
+    workspace_id: int,
+    personality_id: int,
+    body: PersonalityUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update personality content/name/source. Owner/Admin/Member with can_edit_teams."""
+    member = await require_workspace_role(db, workspace_id, user, ["owner", "admin", "member"])
+    if not can_edit_teams(member.role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot edit personalities")
+    result = await db.execute(
+        select(WorkspacePersonality).where(
+            WorkspacePersonality.id == personality_id,
+            WorkspacePersonality.workspace_id == workspace_id,
+        )
+    )
+    personality = result.scalar_one_or_none()
+    if not personality:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Personality not found")
+    if body.name is not None:
+        personality.name = body.name
+    if body.content is not None:
+        personality.content = body.content
+    if body.source is not None and body.source in ("manual", "analyze", "agent_run"):
+        personality.source = body.source
+    await db.commit()
+    await db.refresh(personality)
+    return personality
+
+
+@router.delete("/{workspace_id}/personalities/{personality_id}")
+async def delete_personality(
+    workspace_id: int,
+    personality_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete personality. Owner/Admin/Member with can_edit_teams."""
+    member = await require_workspace_role(db, workspace_id, user, ["owner", "admin", "member"])
+    if not can_edit_teams(member.role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete personalities")
+    result = await db.execute(
+        select(WorkspacePersonality).where(
+            WorkspacePersonality.id == personality_id,
+            WorkspacePersonality.workspace_id == workspace_id,
+        )
+    )
+    personality = result.scalar_one_or_none()
+    if not personality:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Personality not found")
+    await db.delete(personality)
     await db.commit()
     return {"ok": True}

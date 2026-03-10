@@ -67,6 +67,11 @@ def validate_chain_definition(
             out_count = sum(1 for e in edges if e.get("source") == nid)
             if in_count != 1 or out_count != 1:
                 errors.append(f"Loop node {nid} must have exactly one incoming and one outgoing agent edge")
+        elif node_type == "personality":
+            if agent_id is not None:
+                errors.append(f"Personality node {nid} must not have agent_id")
+            if not n.get("personality_id"):
+                errors.append(f"Personality node {nid} missing personality_id")
         elif agent_id is None:
             errors.append(f"Node {nid} missing agent_id")
         elif agent_id not in agent_lookup:
@@ -111,8 +116,15 @@ def validate_chain_definition(
                         errors.append(
                             f"Loop node {loop_nid}: source agent {ids_agent_id} output cannot feed target agent {analysis_agent_id} (format mismatch)"
                         )
-        # Only check agent format compatibility when both endpoints are agents (not approval/slug/loop)
-        elif src_agent_id is not None and tgt_agent_id is not None and src_type != "approval" and tgt_type != "approval":
+        # Only check agent format compatibility when both endpoints are agents (not approval/slug/loop/personality)
+        elif (
+            src_agent_id is not None
+            and tgt_agent_id is not None
+            and src_type != "approval"
+            and tgt_type != "approval"
+            and src_type != "personality"
+            and tgt_type != "personality"
+        ):
             src_agent = agent_lookup.get(src_agent_id)
             tgt_agent = agent_lookup.get(tgt_agent_id)
             if src_agent and tgt_agent and not can_chain(src_agent, tgt_agent):

@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.workspace_member import WorkspaceMember
     from app.models.workspace_secret import WorkspaceSecret
+    from app.models.workspace_personality import WorkspacePersonality
     from app.models.chain import AgentChain
 
 
@@ -33,6 +34,10 @@ class Workspace(Base):
     )
     secrets: Mapped[list["WorkspaceSecret"]] = relationship(
         "WorkspaceSecret", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    personalities: Mapped[list["WorkspacePersonality"]] = relationship(
+        "WorkspacePersonality", back_populates="workspace", cascade="all, delete-orphan",
+        foreign_keys="WorkspacePersonality.workspace_id",
     )
     chains: Mapped[list["AgentChain"]] = relationship(
         "AgentChain", back_populates="workspace", foreign_keys="AgentChain.workspace_id"

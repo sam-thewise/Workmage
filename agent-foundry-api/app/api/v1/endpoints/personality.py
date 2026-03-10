@@ -7,13 +7,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_workspace_role
 from app.core.config import settings
 from app.core.key_encryption import decrypt_api_key
 from app.db.session import get_db
+from app.core.workspace_permissions import can_edit_teams
 from app.models.user import User
 from app.models.user_llm_key import UserLLMKey
 from app.models.user_personality import UserPersonalityProfile
+from app.models.workspace_personality import WorkspacePersonality
 from app.services.personality_service import analyze_tweets_to_profile
 
 router = APIRouter(prefix="/personality", tags=["personality"])
@@ -34,6 +36,9 @@ class PersonalityAnalyzeRequest(BaseModel):
     twstalker_url: str | None = Field(None, max_length=512, description="twstalker.com profile URL to scrape then analyze")
     save: bool = Field(False, description="If true, save the analyzed profile after returning it")
     model: str = Field("openai/gpt-5-mini", description="Model for analysis")
+    workspace_id: int | None = Field(None, description="If set with personality_name, save to workspace personality")
+    chain_id: int | None = Field(None, description="Optional chain (team) scope for workspace personality")
+    personality_name: str | None = Field(None, description="Name for workspace personality (requires workspace_id)")
 
 
 def _profile_to_response(p: UserPersonalityProfile | None) -> PersonalityResponse | None:
@@ -120,6 +125,40 @@ async def analyze_tweets(
     profile_text = analyze_tweets_to_profile(tweet_text, model=payload.model, api_key=api_key)
     if not profile_text:
         raise HTTPException(502, "Analysis produced no output")
+
+    # Save to workspace personality if workspace_id + personality_name provided
+    if payload.workspace_id is not None and payload.personality_name:
+        member = await require_workspace_role(
+            db, payload.workspace_id, user, ["owner", "admin", "member"]
+        )
+        if not can_edit_teams(member.role):
+            raise HTTPException(403, "Cannot create workspace personalities")
+        q = select(WorkspacePersonality).where(
+            WorkspacePersonality.workspace_id == payload.workspace_id,
+            WorkspacePersonality.name == payload.personality_name.strip(),
+        )
+        if payload.chain_id is not None:
+            q = q.where(WorkspacePersonality.chain_id == payload.chain_id)
+        else:
+            q = q.where(WorkspacePersonality.chain_id.is_(None))
+        result = await db.execute(q)
+        existing_row = result.scalar_one_or_none()
+        if existing_row:
+            existing_row.content = profile_text
+            existing_row.source = "analyze"
+            await db.commit()
+            await db.refresh(existing_row)
+        else:
+            wp = WorkspacePersonality(
+                workspace_id=payload.workspace_id,
+                chain_id=payload.chain_id,
+                name=payload.personality_name.strip(),
+                content=profile_text,
+                source="analyze",
+            )
+            db.add(wp)
+            await db.commit()
+            await db.refresh(wp)
 
     if payload.save:
         result = await db.execute(

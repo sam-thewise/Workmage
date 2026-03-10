@@ -70,3 +70,45 @@ class SecretListItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---- Workspace Personalities ----
+
+class PersonalityCreate(BaseModel):
+    name: str
+    content: str = ""
+    chain_id: int | None = None
+
+
+class PersonalityUpdate(BaseModel):
+    name: str | None = None
+    content: str | None = None
+    source: str | None = None
+
+
+class PersonalityListItem(BaseModel):
+    id: int
+    name: str
+    chain_id: int | None
+    source: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PersonalityResponse(BaseModel):
+    id: int
+    workspace_id: int
+    chain_id: int | None
+    name: str
+    content: str
+    source: str
+    source_run_id: int | None
+    source_node_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

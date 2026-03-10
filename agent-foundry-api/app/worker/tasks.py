@@ -372,7 +372,8 @@ def run_chain_task(
             if agent_id is None:
                 continue
             save_slug = node.get("save_to_slug")
-            if not save_slug:
+            save_to_personality_id = node.get("save_to_personality_id")
+            if not save_slug and not save_to_personality_id:
                 continue
             with Session() as db:
                 agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
@@ -422,7 +423,7 @@ def run_chain_task(
                 return {"status": "error", "content": content, "usage": agg_usage}
             audit_trail.append(_audit_entry(nid, label, "agent", "ok", output_preview=content or "", usage=usage, duration_ms=duration_ms))
             outputs[nid] = content or ""
-            if run_owner and (content or "").strip():
+            if save_slug and run_owner and (content or "").strip():
                 with Session() as db:
                     res = db.execute(
                         select(SavedOutput).where(SavedOutput.user_id == run_owner, SavedOutput.slug == save_slug)
@@ -433,13 +434,30 @@ def run_chain_task(
                     else:
                         db.add(SavedOutput(user_id=run_owner, slug=save_slug, content=(content or "").strip()))
                     db.commit()
+            if save_to_personality_id and chain and (content or "").strip():
+                workspace_id = getattr(chain, "workspace_id", None)
+                if workspace_id:
+                    with Session() as db:
+                        from app.models.workspace_personality import WorkspacePersonality
+                        pers = db.execute(
+                            select(WorkspacePersonality).where(
+                                WorkspacePersonality.id == save_to_personality_id,
+                                WorkspacePersonality.workspace_id == workspace_id,
+                            )
+                        ).scalar_one_or_none()
+                        if pers:
+                            pers.content = (content or "").strip()
+                            pers.source = "agent_run"
+                            pers.source_run_id = run_id
+                            pers.source_node_id = nid
+                            db.commit()
         _update_chain_run(run_id, "completed", content=f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", usage=agg_usage, audit_trail=audit_trail)
         return {"status": "completed", "content": f"Setup saved to slugs: {[setup_nodes[n].get('save_to_slug') for n in order if setup_nodes.get(n, {}).get('save_to_slug')]}", "usage": agg_usage}
 
     main_node_ids = {
         nid for nid, n in all_nodes.items()
         if n.get("lane") != "setup"
-        and (n.get("type") == "slug" or n.get("type") == "approval" or n.get("agent_id") is not None)
+        and (n.get("type") == "slug" or n.get("type") == "approval" or n.get("type") == "personality" or n.get("agent_id") is not None)
     }
     if not main_node_ids:
         _update_chain_run(run_id, "completed", content="No main-lane nodes. Add agents or slug nodes to the main lane, or run setup first.", usage={})
@@ -452,14 +470,29 @@ def run_chain_task(
         tgt, src = e.get("target"), e.get("source")
         if tgt and src:
             incoming[tgt].append(src)
-    # Preload agent names for section labels (so downstream nodes get "Output: X Trend Scout" etc.)
+    # Preload agent names and personality names for section labels
     agent_ids_main = {n.get("agent_id") for n in main_nodes.values() if n.get("agent_id") is not None}
+    personality_ids_main = {n.get("personality_id") for n in main_nodes.values() if n.get("personality_id") is not None}
     agent_labels_by_id = {}
+    personality_labels_by_id = {}
     if agent_ids_main:
         with Session() as db:
             agents_main = db.execute(select(Agent).where(Agent.id.in_(agent_ids_main))).scalars().all()
             for a in agents_main:
                 agent_labels_by_id[a.id] = (a.manifest or {}).get("name") or f"Agent #{a.id}"
+    if personality_ids_main:
+        from app.models.workspace_personality import WorkspacePersonality
+        with Session() as db:
+            workspace_id = getattr(chain, "workspace_id", None)
+            if workspace_id:
+                personalities = db.execute(
+                    select(WorkspacePersonality).where(
+                        WorkspacePersonality.id.in_(personality_ids_main),
+                        WorkspacePersonality.workspace_id == workspace_id,
+                    )
+                ).scalars().all()
+                for p in personalities:
+                    personality_labels_by_id[p.id] = p.name
     outputs = {}
     agg_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     audit_trail_main: list[dict] = []
@@ -488,6 +521,27 @@ def run_chain_task(
             slug_label = node.get("slug") or node.get("label") or nid
             audit_trail_main.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
             continue
+        if node.get("type") == "personality":
+            personality_id = node.get("personality_id")
+            if not personality_id:
+                _update_chain_run(run_id, "error", error=f"Personality node {nid} missing personality_id", audit_trail=audit_trail_main)
+                return {"status": "error", "content": f"Personality node {nid} missing personality_id"}
+            workspace_id = getattr(chain, "workspace_id", None)
+            with Session() as db:
+                from app.models.workspace_personality import WorkspacePersonality
+                pers = db.execute(
+                    select(WorkspacePersonality).where(
+                        WorkspacePersonality.id == personality_id,
+                        WorkspacePersonality.workspace_id == workspace_id,
+                    )
+                ).scalar_one_or_none()
+            if not pers:
+                _update_chain_run(run_id, "error", error=f"Personality {personality_id} not found or not in workspace", audit_trail=audit_trail_main)
+                return {"status": "error", "content": f"Personality {personality_id} not found"}
+            outputs[nid] = (pers.content or "").strip()
+            label = personality_labels_by_id.get(personality_id, pers.name)
+            audit_trail_main.append(_audit_entry(nid, f"Personality: {label}", "personality", "ok"))
+            continue
         if node.get("type") == "approval":
             preds = incoming.get(nid, [])
             summary_parts = []
@@ -503,6 +557,9 @@ def run_chain_task(
                 pred_node = main_nodes.get(p)
                 if pred_node and pred_node.get("type") == "slug":
                     label = f"Slug: {pred_node.get('slug', p)}"
+                elif pred_node and pred_node.get("type") == "personality":
+                    pred_pid = pred_node.get("personality_id")
+                    label = f"Personality: {personality_labels_by_id.get(pred_pid, f'#{pred_pid}')}" if pred_pid else f"Output {len(summary_parts) + 1}"
                 elif pred_node and pred_node.get("agent_id") is not None:
                     pred_agent_id = pred_node["agent_id"]
                     label = agent_labels_by_id.get(pred_agent_id, f"Agent #{pred_agent_id}")
@@ -521,6 +578,9 @@ def run_chain_task(
                 tgt_node = main_nodes[tgt]
                 if tgt_node.get("type") == "slug":
                     label = f"Slug: {tgt_node.get('slug', tgt)}"
+                elif tgt_node.get("type") == "personality":
+                    tgt_pid = tgt_node.get("personality_id")
+                    label = f"Personality: {personality_labels_by_id.get(tgt_pid, f'#{tgt_pid}')}" if tgt_pid else tgt
                 elif tgt_node.get("agent_id") is not None:
                     label = agent_labels_by_id.get(tgt_node["agent_id"], f"Agent #{tgt_node['agent_id']}")
                 else:
@@ -577,6 +637,9 @@ def run_chain_task(
             pred_node = main_nodes.get(p)
             if pred_node and pred_node.get("type") == "slug":
                 label = f"Slug: {pred_node.get('slug', p)}"
+            elif pred_node and pred_node.get("type") == "personality":
+                pred_pid = pred_node.get("personality_id")
+                label = f"Personality: {personality_labels_by_id.get(pred_pid, f'#{pred_pid}')}" if pred_pid else f"Input from chain ({len(input_parts) + 1})"
             elif pred_node and pred_node.get("agent_id") is not None:
                 pred_agent_id = pred_node["agent_id"]
                 label = f"Output: {agent_labels_by_id.get(pred_agent_id, f'Agent #{pred_agent_id}')}"
@@ -645,9 +708,9 @@ def run_chain_task(
     return {"status": "completed", "content": final_content, "usage": agg_usage}
 
 
-def _extract_loop_config(defn: dict) -> tuple[int | None, int | None, int] | None:
-    """Extract ids_agent_id, analysis_agent_id, max_iterations from chain definition with a loop node.
-    Returns (ids_agent_id, analysis_agent_id, max_iterations) or None if no valid loop node."""
+def _extract_loop_config(defn: dict) -> tuple[int, int, str, int] | None:
+    """Extract ids_agent_id, analysis_agent_id, analysis_node_id, max_iterations from chain definition with a loop node.
+    Returns (ids_agent_id, analysis_agent_id, analysis_node_id, max_iterations) or None if no valid loop node."""
     nodes = defn.get("nodes") or []
     edges = defn.get("edges") or []
     node_by_id = {n["id"]: n for n in nodes if n.get("id")}
@@ -666,9 +729,9 @@ def _extract_loop_config(defn: dict) -> tuple[int | None, int | None, int] | Non
         tgt_node = node_by_id.get(tgt_nid, {}) if tgt_nid else {}
         ids_agent_id = src_node.get("agent_id")
         analysis_agent_id = tgt_node.get("agent_id")
-        if ids_agent_id is None or analysis_agent_id is None:
+        if ids_agent_id is None or analysis_agent_id is None or not tgt_nid:
             return None
-        return (ids_agent_id, analysis_agent_id, max_iterations)
+        return (ids_agent_id, analysis_agent_id, tgt_nid, max_iterations)
     return None
 
 
@@ -683,9 +746,10 @@ def run_commit_analysis_loop_task(
     run_owner_id: int | None = None,
     github_token: str | None = None,
     run_id: int | None = None,
+    personality_text: str | None = None,
 ) -> dict:
-    """Run loop task: IDs agent → parse SHAs → run analysis agent per SHA (max 5) → concatenate.
-    Used when chain definition contains a loop node."""
+    """Run loop task: IDs agent → parse SHAs → run analysis agent per SHA (max 5) → concatenate → downstream agents.
+    Passes concatenated analysis output to any agents that receive from the analysis agent (e.g. X Post Writer)."""
     import re
     from sqlalchemy import create_engine, select
     from sqlalchemy.orm import sessionmaker
@@ -712,7 +776,7 @@ def run_commit_analysis_loop_task(
         _update_chain_run(run_id, "error", error="Chain has no valid loop node (need exactly one loop with one in, one out agent)")
         return {"status": "error", "content": "Invalid loop chain definition"}
 
-    ids_agent_id, analysis_agent_id, max_iterations = config
+    ids_agent_id, analysis_agent_id, analysis_node_id, max_iterations = config
 
     with Session() as db:
         ids_agent = db.execute(select(Agent).where(Agent.id == ids_agent_id)).scalar_one_or_none()
@@ -762,10 +826,193 @@ def run_commit_analysis_loop_task(
             return {"status": "error", "content": content}
         parts.append(f"## Commit {sha}\n\n{(content or '').strip()}")
 
-    final_content = "\n\n---\n\n".join(parts)
+    concatenated_analysis = "\n\n---\n\n".join(parts)
     if total_valid > max_iterations:
         header = f"Only first {max_iterations} of {total_valid} commits analyzed (max {max_iterations} per run).\n\n"
-        final_content = header + final_content
+        concatenated_analysis = header + concatenated_analysis
+
+    # Find downstream nodes from analysis agent (e.g. X Post Writer)
+    defn = chain.definition or {}
+    nodes = defn.get("nodes") or []
+    edges = defn.get("edges") or []
+    node_by_id = {n["id"]: n for n in nodes if n.get("id")}
+    out_from_analysis = [e for e in edges if e.get("source") == analysis_node_id]
+    downstream_nids = {e.get("target") for e in out_from_analysis if e.get("target")}
+
+    if downstream_nids:
+        # Build downstream subgraph: analysis + all reachable nodes
+        reachable: set[str] = set(downstream_nids)
+        changed = True
+        while changed:
+            changed = False
+            for e in edges:
+                if e.get("source") in reachable and e.get("target") and e.get("target") not in reachable:
+                    reachable.add(e.get("target"))
+                    changed = True
+        downstream_nodes = {nid: node_by_id[nid] for nid in reachable if nid in node_by_id}
+        downstream_edges = [e for e in edges if e.get("source") in reachable and e.get("target") in reachable]
+        # Include analysis node in outputs (it "outputs" the concatenated analysis)
+        reachable.add(analysis_node_id)
+        downstream_nodes[analysis_node_id] = node_by_id.get(analysis_node_id, {})
+        downstream_edges.extend(out_from_analysis)
+
+        order = _topological_order(list(downstream_nodes.values()), downstream_edges)
+        incoming: dict[str, list[str]] = {nid: [] for nid in reachable}
+        for e in downstream_edges:
+            tgt, src = e.get("target"), e.get("source")
+            if tgt and src and tgt in incoming:
+                incoming[tgt].append(src)
+
+        outputs: dict[str, str] = {analysis_node_id: concatenated_analysis}
+        run_owner = run_owner_id or buyer_id
+        workspace_id = getattr(chain, "workspace_id", None)
+
+        # Preload agent and personality labels
+        agent_ids_down = {n.get("agent_id") for n in downstream_nodes.values() if n.get("agent_id") is not None}
+        personality_ids_down = {n.get("personality_id") for n in downstream_nodes.values() if n.get("personality_id") is not None}
+        agent_labels_by_id: dict[int, str] = {}
+        personality_labels_by_id: dict[int, str] = {}
+        if agent_ids_down:
+            with Session() as db:
+                agents_down = db.execute(select(Agent).where(Agent.id.in_(agent_ids_down))).scalars().all()
+                for a in agents_down:
+                    agent_labels_by_id[a.id] = (a.manifest or {}).get("name") or f"Agent #{a.id}"
+        if personality_ids_down and workspace_id:
+            from app.models.workspace_personality import WorkspacePersonality
+            with Session() as db:
+                personalities = db.execute(
+                    select(WorkspacePersonality).where(
+                        WorkspacePersonality.id.in_(personality_ids_down),
+                        WorkspacePersonality.workspace_id == workspace_id,
+                    )
+                ).scalars().all()
+                for p in personalities:
+                    personality_labels_by_id[p.id] = p.name
+
+        audit_trail_down: list[dict] = []
+
+        for nid in order:
+            if nid == analysis_node_id:
+                audit_trail_down.append(_audit_entry(nid, f"Analysis (loop output)", "agent", "ok", output_preview=concatenated_analysis[:AUDIT_PREVIEW_MAX] if concatenated_analysis else ""))
+                continue
+            node = downstream_nodes.get(nid)
+            if not node:
+                continue
+            if node.get("type") == "slug":
+                set_content = (node.get("content") or "").strip()
+                if set_content:
+                    outputs[nid] = set_content
+                else:
+                    slug_name = node.get("slug") or ""
+                    if run_owner and slug_name:
+                        with Session() as db:
+                            outputs[nid] = _get_saved_content(db, run_owner, slug_name)
+                    else:
+                        outputs[nid] = ""
+                audit_trail_down.append(_audit_entry(nid, f"Slug: {node.get('slug', nid)}", "slug", "ok"))
+                continue
+            if node.get("type") == "personality":
+                personality_id = node.get("personality_id")
+                if personality_id and workspace_id:
+                    with Session() as db:
+                        from app.models.workspace_personality import WorkspacePersonality
+                        pers = db.execute(
+                            select(WorkspacePersonality).where(
+                                WorkspacePersonality.id == personality_id,
+                                WorkspacePersonality.workspace_id == workspace_id,
+                            )
+                        ).scalar_one_or_none()
+                    if pers:
+                        outputs[nid] = (pers.content or "").strip()
+                        label = personality_labels_by_id.get(personality_id, pers.name)
+                        audit_trail_down.append(_audit_entry(nid, f"Personality: {label}", "personality", "ok"))
+                continue
+            if node.get("type") == "approval":
+                # Skip approval nodes in loop downstream - would require resume flow
+                continue
+            agent_id = node.get("agent_id")
+            if agent_id is None:
+                continue
+            with Session() as db:
+                agent = db.execute(select(Agent).where(Agent.id == agent_id)).scalar_one_or_none()
+            if not agent:
+                _update_chain_run(run_id, "error", error=f"Agent {agent_id} not found", audit_trail=audit_trail_down)
+                return {"status": "error", "content": f"Agent {agent_id} not found"}
+            agent_label = agent_labels_by_id.get(agent_id, f"Agent #{agent_id}")
+
+            preds = incoming.get(nid, [])
+            input_parts: list[dict] = []
+            for p in preds:
+                if p not in outputs:
+                    continue
+                pred_node = downstream_nodes.get(p)
+                if pred_node and pred_node.get("type") == "slug":
+                    label = f"Slug: {pred_node.get('slug', p)}"
+                elif pred_node and pred_node.get("type") == "personality":
+                    pred_pid = pred_node.get("personality_id")
+                    label = f"Personality: {personality_labels_by_id.get(pred_pid, f'#{pred_pid}')}" if pred_pid else f"Input ({len(input_parts) + 1})"
+                elif pred_node and pred_node.get("agent_id") is not None:
+                    pred_agent_id = pred_node["agent_id"]
+                    label = f"Output: {agent_labels_by_id.get(pred_agent_id, f'Agent #{pred_agent_id}')}"
+                else:
+                    label = f"Input ({len(input_parts) + 1})"
+                content = (outputs[p] or "").strip()
+                input_parts.append({"content": content, "format": "text/plain", "label": label})
+            input_from_slug = (node.get("input_from_slug") or "").strip()
+            if input_from_slug and run_owner:
+                with Session() as db:
+                    slug_content = _get_saved_content(db, run_owner, input_from_slug)
+                if (slug_content or "").strip():
+                    input_parts.append({
+                        "content": slug_content.strip(),
+                        "format": "text/plain",
+                        "label": f"Slug: {input_from_slug}",
+                    })
+            if personality_text and personality_text.strip():
+                input_parts.append({
+                    "content": "User voice/beliefs (use for tone and stance in generated content):\n\n" + personality_text.strip(),
+                    "format": "text/plain",
+                    "label": "Personality / voice",
+                })
+
+            _log_prompt_debug(
+                phase=f"loop_downstream:{nid}",
+                task_name="run_commit_analysis_loop_task",
+                model=model,
+                manifest_name=agent_label,
+                user_input="",
+                input_parts=input_parts if input_parts else None,
+            )
+            import time
+            t0 = time.perf_counter()
+            content, usage = run_agent_in_sandbox(
+                manifest=agent.manifest,
+                user_input="",
+                model=model,
+                api_key=api_key,
+                input_parts=input_parts if input_parts else None,
+                github_token=github_token,
+                extra_env=workspace_secrets,
+            )
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            if usage:
+                agg_usage["prompt_tokens"] = agg_usage.get("prompt_tokens", 0) + (usage.get("prompt_tokens") or 0)
+                agg_usage["completion_tokens"] = agg_usage.get("completion_tokens", 0) + (usage.get("completion_tokens") or 0)
+            if isinstance(content, str) and any(
+                x in content for x in ("Docker error", "Sandbox image", "Execution error", "No response file", "Error:", "404 Not Found")
+            ):
+                audit_trail_down.append(_audit_entry(nid, agent_label, "agent", "error", output_preview=content[:AUDIT_PREVIEW_MAX] if content else "", usage=usage, duration_ms=duration_ms))
+                _update_chain_run(run_id, "error", error=content, usage=agg_usage, audit_trail=audit_trail_down)
+                return {"status": "error", "content": content}
+            audit_trail_down.append(_audit_entry(nid, agent_label, "agent", "ok", output_preview=(content or "")[:AUDIT_PREVIEW_MAX], usage=usage, duration_ms=duration_ms))
+            outputs[nid] = content or ""
+
+        sink_nids = [nid for nid in order if nid in outputs and not any(e.get("source") == nid for e in downstream_edges)]
+        final_content = "\n\n---\n\n".join(outputs.get(nid, "") for nid in sink_nids) if sink_nids else outputs.get(order[-1], concatenated_analysis) if order else concatenated_analysis
+        _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage, audit_trail=audit_trail_down)
+    else:
+        final_content = concatenated_analysis
+        _update_chain_run(run_id, "completed", content=final_content, usage=agg_usage)
 
     if buyer_id:
         with Session() as db:
@@ -848,12 +1095,27 @@ def resume_chain_task(
         if tgt and src:
             incoming[tgt].append(src)
     agent_ids_main = {n.get("agent_id") for n in main_nodes.values() if n.get("agent_id") is not None}
+    personality_ids_main = {n.get("personality_id") for n in main_nodes.values() if n.get("personality_id") is not None}
     agent_labels_by_id = {}
+    personality_labels_by_id = {}
     if agent_ids_main:
         with Session() as db:
             agents_main = db.execute(select(Agent).where(Agent.id.in_(agent_ids_main))).scalars().all()
             for a in agents_main:
                 agent_labels_by_id[a.id] = (a.manifest or {}).get("name") or f"Agent #{a.id}"
+    if personality_ids_main and chain:
+        from app.models.workspace_personality import WorkspacePersonality
+        workspace_id = getattr(chain, "workspace_id", None)
+        if workspace_id:
+            with Session() as db:
+                personalities = db.execute(
+                    select(WorkspacePersonality).where(
+                        WorkspacePersonality.id.in_(personality_ids_main),
+                        WorkspacePersonality.workspace_id == workspace_id,
+                    )
+                ).scalars().all()
+                for p in personalities:
+                    personality_labels_by_id[p.id] = p.name
     agg_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     for nid in next_order:
         node = main_nodes.get(nid)
@@ -872,6 +1134,23 @@ def resume_chain_task(
                     outputs[nid] = ""
             slug_label = node.get("slug") or node.get("label") or nid
             audit_trail_resume.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
+            continue
+        if node.get("type") == "personality":
+            personality_id = node.get("personality_id")
+            if personality_id and chain:
+                workspace_id = getattr(chain, "workspace_id", None)
+                with Session() as db:
+                    from app.models.workspace_personality import WorkspacePersonality
+                    pers = db.execute(
+                        select(WorkspacePersonality).where(
+                            WorkspacePersonality.id == personality_id,
+                            WorkspacePersonality.workspace_id == workspace_id,
+                        )
+                    ).scalar_one_or_none()
+                if pers:
+                    outputs[nid] = (pers.content or "").strip()
+                    label = personality_labels_by_id.get(personality_id, pers.name)
+                    audit_trail_resume.append(_audit_entry(nid, f"Personality: {label}", "personality", "ok"))
             continue
         if node.get("type") == "approval":
             continue
@@ -893,6 +1172,9 @@ def resume_chain_task(
             pred_node = main_nodes.get(p)
             if pred_node and pred_node.get("type") == "slug":
                 label = f"Slug: {pred_node.get('slug', p)}"
+            elif pred_node and pred_node.get("type") == "personality":
+                pred_pid = pred_node.get("personality_id")
+                label = f"Personality: {personality_labels_by_id.get(pred_pid, f'#{pred_pid}')}" if pred_pid else f"Input from chain ({len(input_parts) + 1})"
             elif pred_node and pred_node.get("agent_id") is not None:
                 pred_agent_id = pred_node["agent_id"]
                 label = f"Output: {agent_labels_by_id.get(pred_agent_id, f'Agent #{pred_agent_id}')}"
