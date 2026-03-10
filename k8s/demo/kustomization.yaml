@@ -1,17 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: agent-foundry
+namespace: workmage
 
 resources:
   - ../base
   - worker-deployment.yaml
   - worker-networkpolicy.yaml
 
-# Demo-only: generate agent-foundry-secrets so base is never applied with example secrets.
-# Production / other clusters must create agent-foundry-secrets out-of-band.
+# Demo-only: generate workmage-secrets so base is never applied with example secrets.
+# Production / other clusters must create workmage-secrets out-of-band.
 secretGenerator:
-  - name: agent-foundry-secrets
+  - name: workmage-secrets
     literals:
       - POSTGRES_PASSWORD=__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__
       - DATABASE_URL=postgresql+asyncpg://postgres:__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__@postgres:5432/agentfoundry

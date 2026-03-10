@@ -2,6 +2,8 @@
 
 Step-by-step setup of Azure resources via Azure CLI so the **demo** branch GitHub Action can build, push, and deploy. Do this once before relying on the workflow.
 
+All commands are for **PowerShell** (Windows). Variables use `$env:VAR` so they work correctly in the same session.
+
 ## What you need on your machine
 
 - **Azure CLI** ([install](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)): `az --version`
@@ -12,7 +14,7 @@ Step-by-step setup of Azure resources via Azure CLI so the **demo** branch GitHu
 
 ## 1. Sign in and pick a subscription
 
-```bash
+```powershell
 az login
 az account set --subscription "<subscription-id-or-name>"
 az account show --output table
@@ -24,16 +26,18 @@ Use the **Id** or **Name** from the table as your subscription. Note the **Tenan
 
 ## 2. Set variables (use your own names/region)
 
-```bash
+Run these in **PowerShell** and use the same session for steps 2–5 so the variables are available when you create the resource group, ACR, and AKS.
+
+```powershell
 # Change these to your values
-export SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-export TENANT_ID=$(az account show --query tenantId -o tsv)
-export RESOURCE_GROUP=agent-foundry-demo
-export LOCATION=eastus
-export ACR_NAME=agentfoundrydemo    # 5–50 alphanumeric, globally unique
-export AKS_NAME=agent-foundry-aks
-export AKS_NODE_COUNT=2
-export AKS_NODE_SIZE=Standard_B2s     # or Standard_D2s_v3 for production
+$env:SUBSCRIPTION_ID = (az account show --query id -o tsv)
+$env:TENANT_ID = (az account show --query tenantId -o tsv)
+$env:RESOURCE_GROUP = "agent-foundry-demo"
+$env:LOCATION = "eastus"
+$env:ACR_NAME = "agentfoundrydemo"   # 5–50 alphanumeric, globally unique
+$env:AKS_NAME = "agent-foundry-aks"
+$env:AKS_NODE_COUNT = "2"
+$env:AKS_NODE_SIZE = "Standard_DC2s_v3"  # 2 vCPU, 16 GiB; use Standard_M8-2ms if you prefer general-purpose over confidential computing
 ```
 
 **ACR name**: Must be globally unique (e.g. `myorg-agentfoundry-demo`). Only lowercase letters and numbers.
@@ -42,10 +46,10 @@ export AKS_NODE_SIZE=Standard_B2s     # or Standard_D2s_v3 for production
 
 ## 3. Create resource group
 
-```bash
-az group create \
-  --name "$RESOURCE_GROUP" \
-  --location "$LOCATION" \
+```powershell
+az group create `
+  --name $env:RESOURCE_GROUP `
+  --location $env:LOCATION `
   --output table
 ```
 
@@ -53,32 +57,32 @@ az group create \
 
 ## 4. Create Azure Container Registry (ACR)
 
-```bash
-az acr create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$ACR_NAME" \
-  --sku Basic \
-  --admin-enabled false \
+```powershell
+az acr create `
+  --resource-group $env:RESOURCE_GROUP `
+  --name $env:ACR_NAME `
+  --sku Basic `
+  --admin-enabled false `
   --output table
 ```
 
 Get the login server (used later for image names and GitHub):
 
-```bash
-export ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer -o tsv)
-echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
+```powershell
+$env:ACR_LOGIN_SERVER = (az acr show --name $env:ACR_NAME --resource-group $env:RESOURCE_GROUP --query loginServer -o tsv)
+Write-Host "ACR_LOGIN_SERVER=$env:ACR_LOGIN_SERVER"
 ```
 
 **Optional (local Docker push)**: If you want to push from your machine without the workflow:
 
-```bash
-az acr update --name "$ACR_NAME" --admin-enabled true
-az acr credential show --name "$ACR_NAME" --query "username" -o tsv
-az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv
-# docker login $ACR_LOGIN_SERVER  (use the username and password above)
+```powershell
+az acr update --name $env:ACR_NAME --admin-enabled true
+az acr credential show --name $env:ACR_NAME --query "username" -o tsv
+az acr credential show --name $env:ACR_NAME --query "passwords[0].value" -o tsv
+# docker login $env:ACR_LOGIN_SERVER  (use the username and password above)
 ```
 
-Turn admin off again when you rely only on the workflow: `az acr update --name "$ACR_NAME" --admin-enabled false`.
+Turn admin off again when you rely only on the workflow: `az acr update --name $env:ACR_NAME --admin-enabled false`.
 
 ---
 
@@ -86,31 +90,31 @@ Turn admin off again when you rely only on the workflow: `az acr update --name "
 
 This creates a cluster and gives its managed identity permission to pull from your ACR (no image pull secret needed).
 
-```bash
-az aks create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$AKS_NAME" \
-  --location "$LOCATION" \
-  --node-count "$AKS_NODE_COUNT" \
-  --node-vm-size "$AKS_NODE_SIZE" \
-  --attach-acr "$ACR_NAME" \
-  --generate-ssh-keys \
+```powershell
+az aks create `
+  --resource-group $env:RESOURCE_GROUP `
+  --name $env:AKS_NAME `
+  --location $env:LOCATION `
+  --node-count $env:AKS_NODE_COUNT `
+  --node-vm-size $env:AKS_NODE_SIZE `
+  --attach-acr $env:ACR_NAME `
+  --generate-ssh-keys `
   --output table
 ```
 
 **Attach ACR to an existing AKS** (if you created AKS without `--attach-acr`):
 
-```bash
-az aks update \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$AKS_NAME" \
-  --attach-acr "$ACR_NAME"
+```powershell
+az aks update `
+  --resource-group $env:RESOURCE_GROUP `
+  --name $env:AKS_NAME `
+  --attach-acr $env:ACR_NAME
 ```
 
 Verify:
 
-```bash
-az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$AKS_NAME" --overwrite-existing
+```powershell
+az aks get-credentials --resource-group $env:RESOURCE_GROUP --name $env:AKS_NAME --overwrite-existing
 kubectl get nodes
 ```
 
@@ -120,53 +124,53 @@ kubectl get nodes
 
 Use this for production instead of in-cluster Postgres. You’ll put the connection string into the Kubernetes secret.
 
-```bash
-export PG_SERVER_NAME=agent-foundry-pg
-export PG_ADMIN_USER=pgadmin
-export PG_ADMIN_PASSWORD='<pick-a-strong-password>'
-export PG_DB_NAME=agentfoundry
+```powershell
+$env:PG_SERVER_NAME = "agent-foundry-pg"
+$env:PG_ADMIN_USER = "pgadmin"
+$env:PG_ADMIN_PASSWORD = "<pick-a-strong-password>"
+$env:PG_DB_NAME = "agentfoundry"
 ```
 
-Create the server (Flexible Server, same region as AKS):
+Create the server (Flexible Server, same region as AKS). Use **General Purpose** with `Standard_D2s_v3` (2 vCore); Burstable (B1ms) is often not available in subscriptions. If this SKU is restricted, list options with `az postgres flexible-server list-skus --location $env:LOCATION -o table` and pick an available General Purpose SKU.
 
-```bash
-az postgres flexible-server create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$PG_SERVER_NAME" \
-  --location "$LOCATION" \
-  --admin-user "$PG_ADMIN_USER" \
-  --admin-password "$PG_ADMIN_PASSWORD" \
-  --sku-name Standard_B1ms \
-  --tier Burstable \
-  --version 16 \
-  --storage-size 32 \
+```powershell
+az postgres flexible-server create `
+  --resource-group $env:RESOURCE_GROUP `
+  --name $env:PG_SERVER_NAME `
+  --location $env:LOCATION `
+  --admin-user $env:PG_ADMIN_USER `
+  --admin-password $env:PG_ADMIN_PASSWORD `
+  --sku-name Standard_D2s_v3 `
+  --tier GeneralPurpose `
+  --version 16 `
+  --storage-size 32 `
   --output table
 ```
 
 Create the database and allow AKS to connect (replace with your AKS subnet if you use private networking):
 
-```bash
-az postgres flexible-server db create \
-  --resource-group "$RESOURCE_GROUP" \
-  --server-name "$PG_SERVER_NAME" \
-  --database-name "$PG_DB_NAME"
+```powershell
+az postgres flexible-server db create `
+  --resource-group $env:RESOURCE_GROUP `
+  --server-name $env:PG_SERVER_NAME `
+  --database-name $env:PG_DB_NAME
 
 # Allow Azure services (and optionally restrict to your AKS outbound IP later)
-az postgres flexible-server firewall-rule create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$PG_SERVER_NAME" \
-  --rule-name AllowAzureServices \
-  --start-ip-address 0.0.0.0 \
+az postgres flexible-server firewall-rule create `
+  --resource-group $env:RESOURCE_GROUP `
+  --name $env:PG_SERVER_NAME `
+  --rule-name AllowAzureServices `
+  --start-ip-address 0.0.0.0 `
   --end-ip-address 0.0.0.0
 ```
 
 Build the connection strings (replace with your server name if different):
 
-```bash
-export PG_HOST="${PG_SERVER_NAME}.postgres.database.azure.com"
-export DATABASE_URL="postgresql+asyncpg://${PG_ADMIN_USER}:${PG_ADMIN_PASSWORD}@${PG_HOST}:5432/${PG_DB_NAME}?sslmode=require"
-export DATABASE_SYNC_URL="postgresql://${PG_ADMIN_USER}:${PG_ADMIN_PASSWORD}@${PG_HOST}:5432/${PG_DB_NAME}?sslmode=require"
-echo "DATABASE_URL is set (do not print it in logs)"
+```powershell
+$env:PG_HOST = "$($env:PG_SERVER_NAME).postgres.database.azure.com"
+$env:DATABASE_URL = "postgresql+asyncpg://$($env:PG_ADMIN_USER):$($env:PG_ADMIN_PASSWORD)@$($env:PG_HOST):5432/$($env:PG_DB_NAME)?sslmode=require"
+$env:DATABASE_SYNC_URL = "postgresql://$($env:PG_ADMIN_USER):$($env:PG_ADMIN_PASSWORD)@$($env:PG_HOST):5432/$($env:PG_DB_NAME)?sslmode=require"
+Write-Host "DATABASE_URL is set (do not print it in logs)"
 ```
 
 You’ll put `DATABASE_URL` and `DATABASE_SYNC_URL` into the Kubernetes secret and can remove in-cluster Postgres from the manifests.
@@ -177,27 +181,27 @@ You’ll put `DATABASE_URL` and `DATABASE_SYNC_URL` into the Kubernetes secret a
 
 Use this for production instead of in-cluster Redis.
 
-```bash
-export REDIS_NAME=agent-foundry-redis
+```powershell
+$env:REDIS_NAME = "agent-foundry-redis"
 ```
 
-```bash
-az redis create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$REDIS_NAME" \
-  --location "$LOCATION" \
-  --sku Basic \
-  --vm-size c0 \
+```powershell
+az redis create `
+  --resource-group $env:RESOURCE_GROUP `
+  --name $env:REDIS_NAME `
+  --location $env:LOCATION `
+  --sku Basic `
+  --vm-size c0 `
   --output table
 ```
 
 Get host and key:
 
-```bash
-export REDIS_HOST=$(az redis show --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query hostName -o tsv)
-export REDIS_KEY=$(az redis list-keys --resource-group "$RESOURCE_GROUP" --name "$REDIS_NAME" --query primaryKey -o tsv)
-export REDIS_URL="redis://:${REDIS_KEY}@${REDIS_HOST}:6380"
-echo "REDIS_URL is set (do not print it in logs)"
+```powershell
+$env:REDIS_HOST = (az redis show --resource-group $env:RESOURCE_GROUP --name $env:REDIS_NAME --query hostName -o tsv)
+$env:REDIS_KEY = (az redis list-keys --resource-group $env:RESOURCE_GROUP --name $env:REDIS_NAME --query primaryKey -o tsv)
+$env:REDIS_URL = "redis://:$($env:REDIS_KEY)@$($env:REDIS_HOST):6380"
+Write-Host "REDIS_URL is set (do not print it in logs)"
 ```
 
 Use `REDIS_URL` in the Kubernetes secret. Default port for Azure Redis SSL is 6380; use 6379 if you disable SSL.
@@ -210,13 +214,13 @@ The workflow needs a service principal that can: log in to Azure, push to ACR, a
 
 Create a principal and scope it to your resource group:
 
-```bash
-export SP_NAME=sp-agent-foundry-github
+```powershell
+$env:SP_NAME = "sp-agent-foundry-github"
 
-az ad sp create-for-rbac \
-  --name "$SP_NAME" \
-  --role contributor \
-  --scopes "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}" \
+az ad sp create-for-rbac `
+  --name $env:SP_NAME `
+  --role contributor `
+  --scopes "/subscriptions/$($env:SUBSCRIPTION_ID)/resourceGroups/$($env:RESOURCE_GROUP)" `
   --sdk-auth
 ```
 
@@ -268,21 +272,30 @@ You can use **Variables** instead of secrets for `ACR_NAME`, `AKS_NAME`, and `AK
 
 ## 10. One-time Kubernetes secret (app config)
 
+Run the commands below from **any directory** (e.g. repo root). They use `kubectl` against whichever cluster is current in your kubeconfig—ensure you’ve run step 5 (`az aks get-credentials ...`) so the context points at your AKS cluster.
+
 The workflow applies manifests from `k8s/demo`. The **base** kustomization does not include the worker (no privileged DinD) or a secret; the **demo** overlay provides a secretGenerator (demo values) and a hardened worker with TLS. For a real deploy you should replace the secret with one that has your DB and Redis URLs (create out-of-band or use External Secrets).
 
 **If you use in-cluster Postgres/Redis** (default in demo): the demo overlay's secretGenerator is enough for a first run.
 
-**If you use Azure PostgreSQL and/or Azure Redis**: create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7):
+**If you use Azure PostgreSQL and/or Azure Redis**: create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7).
 
-```bash
+- **DATABASE_URL / DATABASE_SYNC_URL**: From step 6; they already contain your Azure PostgreSQL admin user and password (the one you set as `$env:PG_ADMIN_PASSWORD`). The app uses these to talk to Azure Postgres—no separate “Postgres password” field for the app.
+- **REDIS_URL**: From step 7 (Azure Redis).
+- **SECRET_KEY**: Generate a random value (see below).
+- **POSTGRES_PASSWORD**: Used only by the **in-cluster** Postgres pod (the base still deploys it). Since the app connects to **Azure** Postgres via DATABASE_URL, this value is not used by the app. You can set it to your Azure admin password (same as in the connection strings) or any random string—it just satisfies the in-cluster Postgres container.
+
+Generate a random value for `SECRET_KEY` (used for session/signing). In PowerShell: `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }) -as [byte[]])` or use OpenSSL if installed: `openssl rand -hex 32`. Use that string as the `SECRET_KEY` value below.
+
+```powershell
 kubectl create namespace agent-foundry --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create secret generic agent-foundry-secrets -n agent-foundry \
-  --from-literal=DATABASE_URL='<your-database-url>' \
-  --from-literal=DATABASE_SYNC_URL='<your-database-sync-url>' \
-  --from-literal=REDIS_URL='<your-redis-url>' \
-  --from-literal=SECRET_KEY='<openssl-rand-hex-32>' \
-  --from-literal=POSTGRES_PASSWORD='<postgres-password-if-using-in-cluster-pg>' \
+kubectl create secret generic workmage-secrets -n agent-foundry `
+  --from-literal=DATABASE_URL='<from-step-6>' `
+  --from-literal=DATABASE_SYNC_URL='<from-step-6>' `
+  --from-literal=REDIS_URL='<from-step-7>' `
+  --from-literal=SECRET_KEY='<paste-generated-key-here>' `
+  --from-literal=POSTGRES_PASSWORD='<same-as-PG_ADMIN_PASSWORD-or-any-string>' `
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -293,8 +306,8 @@ If you use the demo overlay's generated secret, the first `kubectl apply -k k8s/
 ## 11. Quick verification
 
 - **Azure**
-  - ACR: `az acr repository list --name "$ACR_NAME" --output table` (empty until first push).
-  - AKS: `az aks show --resource-group "$RESOURCE_GROUP" --name "$AKS_NAME" --query provisioningState -o tsv` → `Succeeded`.
+  - ACR: `az acr repository list --name $env:ACR_NAME --output table` (empty until first push).
+  - AKS: `az aks show --resource-group $env:RESOURCE_GROUP --name $env:AKS_NAME --query provisioningState -o tsv` → `Succeeded`.
 - **kubectl** (after `az aks get-credentials ...`): `kubectl get nodes` and `kubectl get ns agent-foundry`.
 
 After the first run of the **Deploy to AKS (demo branch)** workflow you should see images in ACR and workloads in the `agent-foundry` namespace.
@@ -311,6 +324,6 @@ After the first run of the **Deploy to AKS (demo branch)** workflow you should s
 - [ ] (Optional) Azure Cache for Redis created; `REDIS_URL` ready (step 7).
 - [ ] Service principal created; full JSON copied (step 8).
 - [ ] GitHub repo secrets (and/or variables) set: `AZURE_CREDENTIALS`, `ACR_NAME`, `AKS_NAME`, `AKS_RESOURCE_GROUP` (step 9).
-- [ ] Kubernetes secret `agent-foundry-secrets` created or left to the example from manifests (step 10).
+- [ ] Kubernetes secret `workmage-secrets` created or left to the example from manifests (step 10).
 
 Then push to the **demo** branch or run the workflow manually; see [deploy-azure.md](deploy-azure.md) for deploy flow and app-level config.

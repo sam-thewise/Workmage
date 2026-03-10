@@ -5,7 +5,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: agent-runs
-  namespace: agent-foundry
+  namespace: workmage
 spec:
   accessModes: ["ReadWriteMany"]
   resources:
@@ -18,7 +18,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: worker
-  namespace: agent-foundry
+  namespace: workmage
   labels:
     app: worker
 spec:
@@ -49,9 +49,9 @@ spec:
               value: "/agent-runs"
           envFrom:
             - configMapRef:
-                name: agent-foundry-config
+                name: workmage-config
             - secretRef:
-                name: agent-foundry-secrets
+                name: workmage-secrets
           volumeMounts:
             - name: agent-runs
               mountPath: /agent-runs

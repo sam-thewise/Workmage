@@ -3,7 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: worker-egress
-  namespace: agent-foundry
+  namespace: workmage
 spec:
   podSelector:
     matchLabels:
@@ -19,7 +19,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: worker-ingress
-  namespace: agent-foundry
+  namespace: workmage
 spec:
   podSelector:
     matchLabels:

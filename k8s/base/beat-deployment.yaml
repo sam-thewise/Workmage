@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: beat
-  namespace: agent-foundry
+  namespace: workmage
   labels:
     app: beat
 spec:
@@ -22,6 +22,6 @@ spec:
           command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=info"]
           envFrom:
             - configMapRef:
-                name: agent-foundry-config
+                name: workmage-config
             - secretRef:
-                name: agent-foundry-secrets
+                name: workmage-secrets

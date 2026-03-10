@@ -15,7 +15,7 @@ env:
   ACR_NAME: ${{ vars.ACR_NAME || secrets.ACR_NAME }}
   AKS_NAME: ${{ vars.AKS_NAME || secrets.AKS_NAME }}
   AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP || secrets.AKS_RESOURCE_GROUP }}
-  NAMESPACE: agent-foundry
+  namespace: workmage
 
 jobs:
   build-and-deploy:

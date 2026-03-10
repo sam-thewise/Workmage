@@ -29,8 +29,8 @@ You can use **OIDC** instead of a client secret: create an app registration, add
 
 ## Env vars and secrets
 
-- **ConfigMap** (`agent-foundry-config`): Non-secret env (e.g. `ENVIRONMENT`, `FRONTEND_URL`, `API_PUBLIC_URL`, `TWITTER_MCP_URL`). Override in the demo overlay or patch for your hostnames.
-- **Secret** (`agent-foundry-secrets`): Copy `k8s/base/secret.example.yaml` to `secret.yaml` (or create via `kubectl create secret generic`). Provide at least:
+- **ConfigMap** (`workmage-config`): Non-secret env (e.g. `ENVIRONMENT`, `FRONTEND_URL`, `API_PUBLIC_URL`, `TWITTER_MCP_URL`). Override in the demo overlay or patch for your hostnames.
+- **Secret** (`workmage-secrets`): Copy `k8s/base/secret.example.yaml` to `secret.yaml` (or create via `kubectl create secret generic`). Provide at least:
   - `DATABASE_URL`, `DATABASE_SYNC_URL`, `REDIS_URL`, `SECRET_KEY`
   - `POSTGRES_PASSWORD` if using in-cluster Postgres
   - Optional: Stripe keys, `TWITTER_BEARER_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.
@@ -46,7 +46,7 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 
 1. Push to the `demo` branch (or run the workflow manually via **Actions → Deploy to AKS (demo branch) → Run workflow**).
 2. The workflow: logs in to Azure, builds and pushes the four images to ACR (tag `:demo` and `:<sha>`), runs `kubectl apply -k k8s/demo` (Kustomize sets image tags), then sets the worker’s `AGENT_SANDBOX_IMAGE` to the ACR sandbox image.
-3. Ensure the `agent-foundry` namespace and the `agent-foundry-secrets` secret exist. For the **demo overlay** (`k8s/demo`), the example `agent-foundry-secrets` secret is created by the manifests; when using the **base manifests** (`k8s/base`), you must create the `agent-foundry-secrets` secret yourself (for example by copying `k8s/base/secret.example.yaml` to `secret.yaml` or via `kubectl create secret generic`).
+3. Ensure the `agent-foundry` namespace and the `workmage-secrets` secret exist. For the **demo overlay** (`k8s/demo`), the example `workmage-secrets` secret is created by the manifests; when using the **base manifests** (`k8s/base`), you must create the `workmage-secrets` secret yourself (for example by copying `k8s/base/secret.example.yaml` to `secret.yaml` or via `kubectl create secret generic`).
 
 ## Post-deploy
 

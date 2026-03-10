@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: agent-foundry
+  namespace: workmage
   labels:
     app: frontend
 spec:
@@ -25,13 +25,13 @@ spec:
           # VITE_API_URL is build-time in Vite; set when building the image or use runtime config in your app.
           envFrom:
             - configMapRef:
-                name: agent-foundry-config
+                name: workmage-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend
-  namespace: agent-foundry
+  namespace: workmage
   labels:
     app: frontend
 spec:

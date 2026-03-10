@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: agent-foundry
-  namespace: agent-foundry
+  namespace: workmage
   annotations:
     # For Azure: use application-gateway-ingress or nginx
     # kubernetes.io/ingress.class: nginx
