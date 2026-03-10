@@ -2,6 +2,9 @@
 
 Uses Snowtrace/Routescan Etherscan-compatible API (Fuji and mainnet).
 All chain/indexer timestamps are UTC. Optional timezone converts date-only inputs from that zone to UTC.
+
+Timezone parsing uses zoneinfo (IANA tzdata). The runtime must have tzdata available (e.g. install
+the tzdata package in requirements.txt when using python:*-slim images that omit system tzdata).
 """
 from __future__ import annotations
 
