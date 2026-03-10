@@ -103,6 +103,7 @@ def _audit_entry(
     output_preview: str | None = None,
     usage: dict | None = None,
     duration_ms: int | None = None,
+    slug_value: str | None = None,
 ) -> dict:
     """Build one audit trail entry (serializable for JSONB)."""
     entry = {"node_id": node_id, "label": label, "type": node_type, "status": status}
@@ -112,6 +113,8 @@ def _audit_entry(
         entry["usage"] = dict(usage)
     if duration_ms is not None:
         entry["duration_ms"] = duration_ms
+    if slug_value is not None:
+        entry["slug_value"] = slug_value[:AUDIT_PREVIEW_MAX] if slug_value else ""
     return entry
 
 
@@ -366,7 +369,7 @@ def run_chain_task(
                     else:
                         outputs[nid] = ""
                 slug_label = node.get("slug") or node.get("label") or nid
-                audit_trail.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
+                audit_trail.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok", slug_value=outputs.get(nid, "")))
                 continue
             agent_id = node.get("agent_id")
             if agent_id is None:
@@ -519,7 +522,7 @@ def run_chain_task(
                 else:
                     outputs[nid] = ""
             slug_label = node.get("slug") or node.get("label") or nid
-            audit_trail_main.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
+            audit_trail_main.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok", slug_value=outputs.get(nid, "")))
             continue
         if node.get("type") == "personality":
             personality_id = node.get("personality_id")
@@ -1026,7 +1029,7 @@ def run_commit_analysis_loop_task(
                             outputs[nid] = _get_saved_content(db, run_owner, slug_name)
                     else:
                         outputs[nid] = ""
-                audit_trail_down.append(_audit_entry(nid, f"Slug: {node.get('slug', nid)}", "slug", "ok"))
+                audit_trail_down.append(_audit_entry(nid, f"Slug: {node.get('slug', nid)}", "slug", "ok", slug_value=outputs.get(nid, "")))
                 continue
             if node.get("type") == "personality":
                 personality_id = node.get("personality_id")
@@ -1250,7 +1253,7 @@ def resume_chain_task(
                 else:
                     outputs[nid] = ""
             slug_label = node.get("slug") or node.get("label") or nid
-            audit_trail_resume.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok"))
+            audit_trail_resume.append(_audit_entry(nid, f"Slug: {slug_label}", "slug", "ok", slug_value=outputs.get(nid, "")))
             continue
         if node.get("type") == "personality":
             personality_id = node.get("personality_id")

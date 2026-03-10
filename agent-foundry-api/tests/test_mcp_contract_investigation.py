@@ -117,12 +117,19 @@ async def test_mcp_contract_investigation_tools_call_missing_args():
 
 @pytest.mark.asyncio
 async def test_contract_investigation_service_date_parsing_and_block_range():
-    """Service: date range is converted to block range via getblocknobytime."""
+    """Service: date range is converted to block range via getblocknobytime; range clamped to indexer latest."""
     from app.services import contract_investigation
 
+    # Latest block ts after 2024-03-02 so no clamping; then start/end block lookups
+    mock_latest_ts = AsyncMock(return_value=2000000000)
     mock_block = AsyncMock(side_effect=[1000, 2000])
     mock_request = AsyncMock(return_value={"result": []})
     with (
+        patch.object(
+            contract_investigation,
+            "get_latest_block_timestamp",
+            mock_latest_ts,
+        ),
         patch.object(
             contract_investigation,
             "get_block_number_by_time",
@@ -141,6 +148,7 @@ async def test_contract_investigation_service_date_parsing_and_block_range():
             "fuji",
         )
         assert txs == []
+        assert mock_latest_ts.await_count == 1
         assert mock_block.await_count == 2
         # First call: start_ts -> block (after); second: end_ts -> block (before)
         calls = mock_block.await_args_list
