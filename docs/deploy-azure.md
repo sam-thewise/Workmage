@@ -46,7 +46,7 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 
 1. Push to the `demo` branch (or run the workflow manually via **Actions → Deploy to AKS (demo branch) → Run workflow**).
 2. The workflow: logs in to Azure, builds and pushes the four images to ACR (tag `:demo` and `:<sha>`), runs `kubectl apply -k k8s/demo` (Kustomize sets image tags), then sets the worker’s `AGENT_SANDBOX_IMAGE` to the ACR sandbox image.
-3. Ensure the `agent-foundry` namespace and the `agent-foundry-secrets` secret exist. If you use the base as-is, the example secret is applied; replace with a real secret for non-demo.
+3. Ensure the `agent-foundry` namespace and the `agent-foundry-secrets` secret exist. For the **demo overlay** (`k8s/demo`), the example `agent-foundry-secrets` secret is created by the manifests; when using the **base manifests** (`k8s/base`), you must create the `agent-foundry-secrets` secret yourself (for example by copying `k8s/base/secret.example.yaml` to `secret.yaml` or via `kubectl create secret generic`).
 
 ## Post-deploy
 

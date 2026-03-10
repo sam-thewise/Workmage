@@ -13,11 +13,11 @@ resources:
 secretGenerator:
   - name: agent-foundry-secrets
     literals:
-      - POSTGRES_PASSWORD=postgres
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/agentfoundry
-      - DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/agentfoundry
+      - POSTGRES_PASSWORD=__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__
+      - DATABASE_URL=postgresql+asyncpg://postgres:__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__@postgres:5432/agentfoundry
+      - DATABASE_SYNC_URL=postgresql://postgres:__REPLACE_WITH_SECURE_RANDOM_POSTGRES_PASSWORD__@postgres:5432/agentfoundry
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=demo-change-me
+      - SECRET_KEY=__REPLACE_WITH_SECURE_RANDOM_SECRET_KEY__
     options:
       disableNameSuffixHash: true
 
