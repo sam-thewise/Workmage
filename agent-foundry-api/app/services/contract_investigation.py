@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.config import settings
 from app.services.contract_source import _snowtrace_base_url
@@ -43,10 +43,8 @@ def _parse_date(s: str, timezone_name: str | None = None) -> int:
             else:
                 dt = dt_naive.replace(tzinfo=timezone.utc)
             return int(dt.timestamp())
-        except Exception as e:
-            if "zoneinfo" in str(type(e).__name__) or "No such file" in str(e):
-                raise ValueError(f"Invalid timezone: {timezone_name}. Use IANA name (e.g. America/New_York).") from e
-            raise
+        except ZoneInfoNotFoundError as e:
+            raise ValueError(f"Invalid timezone: {timezone_name}. Use IANA name (e.g. America/New_York).") from e
     # ISO datetime
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z"):
         try:
