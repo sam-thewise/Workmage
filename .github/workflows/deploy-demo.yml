@@ -93,11 +93,9 @@ jobs:
           az aks get-credentials --resource-group ${{ env.AKS_RESOURCE_GROUP }} --name ${{ env.AKS_NAME }} --overwrite-existing
 
       - name: Install kubectl
-        run: |
-          curl -sLO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
-          kubectl version --client
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
 
       - name: Install kustomize
         run: |
