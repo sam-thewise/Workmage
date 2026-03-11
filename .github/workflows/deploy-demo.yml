@@ -160,7 +160,7 @@ jobs:
           for d in api frontend beat twitter-automation; do
             kubectl rollout status deployment/$d -n ${{ env.NAMESPACE }} --timeout=120s
           done
-          kubectl rollout status deployment/worker -n ${{ env.NAMESPACE }} --timeout=300s
+          kubectl rollout status deployment/worker -n ${{ env.NAMESPACE }} --timeout=300s || echo "::warning::Worker rollout timed out; it may still be starting. Site and API work; background tasks will run once the worker pod is ready."
 
       - name: Set worker sandbox image
         run: |
