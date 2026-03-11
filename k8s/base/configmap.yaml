@@ -5,9 +5,9 @@ metadata:
   namespace: workmage
 data:
   ENVIRONMENT: "production"
-  FRONTEND_URL: "http://demo.workmage.app"
-  API_PUBLIC_URL: "http://api-demo.workmage.app"
-  VITE_API_URL: "http://api-demo.workmage.app/api/v1"
+  FRONTEND_URL: "https://demo.workmage.app"
+  API_PUBLIC_URL: "https://api-demo.workmage.app"
+  VITE_API_URL: "https://api-demo.workmage.app/api/v1"
   TWITTER_MCP_URL: "http://twitter-automation:8010/mcp/twitter"
   TWITTER_MCP_TIMEOUT_SEC: "60"
   TWITTER_MCP_RETRIES: "2"

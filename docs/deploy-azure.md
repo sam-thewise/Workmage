@@ -50,7 +50,7 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 
 ## Post-deploy
 
-- **Ingress**: The workflow installs the NGINX Ingress Controller automatically and waits for the LoadBalancer IP. After the workflow completes, check the job summary for access instructions. Add the provided IP and hostnames to your hosts file (e.g. `C:\Windows\System32\drivers\etc\hosts`) and open **http://demo.example.com** in your browser. For a custom domain, point DNS A records to the LoadBalancer IP and update hostnames in `k8s/base/ingress.yaml` and `k8s/base/configmap.yaml`.
+- **Ingress & HTTPS**: The workflow installs NGINX Ingress and cert-manager. Point **demo.workmage.app** and **api-demo.workmage.app** DNS A records to the LoadBalancer IP (see job summary). cert-manager provisions a free Let's Encrypt TLS certificate automatically; use **https://demo.workmage.app**. To use a different domain, update `k8s/base/ingress.yaml` and `k8s/base/configmap.yaml`, and set the issuer email in `k8s/base/letsencrypt-issuer.yaml`.
 - **Migrations**: Run Alembic against the DB (e.g. from a one-off job or locally with `DATABASE_URL`): `alembic -c agent-foundry-api/alembic.ini upgrade head`.
 - **Storage**: The worker’s PVC `agent-runs` uses `ReadWriteMany`; on AKS you may need a storage class (e.g. Azure Files). Set `storageClassName` in `k8s/demo/worker-deployment.yaml` if required (demo overlay).
 

@@ -8,6 +8,7 @@ namespace: workmage
 resources:
   - namespace.yaml
   - configmap.yaml
+  - letsencrypt-issuer.yaml
   - postgres.yaml
   - redis.yaml
   - api-deployment.yaml

@@ -1,0 +1,16 @@
+# Let's Encrypt production issuer. cert-manager uses this to issue TLS certs for the Ingress.
+# Replace the email with your own (used for expiry notifications).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: admin@workmage.app
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

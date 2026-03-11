@@ -3,10 +3,17 @@ kind: Ingress
 metadata:
   name: agent-foundry
   namespace: workmage
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - demo.workmage.app
+        - api-demo.workmage.app
+      secretName: workmage-tls
   rules:
-    - host: api-demo.example.com
+    - host: api-demo.workmage.app
       http:
         paths:
           - path: /
@@ -16,7 +23,7 @@ spec:
                 name: api
                 port:
                   number: 8000
-    - host: demo.example.com
+    - host: demo.workmage.app
       http:
         paths:
           - path: /
@@ -26,6 +33,3 @@ spec:
                 name: frontend
                 port:
                   number: 5173
-  # tls:
-  #   - hosts: [api-demo.example.com, demo.example.com]
-  #     secretName: agent-foundry-tls
