@@ -1,4 +1,5 @@
 """Application configuration."""
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +37,12 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     FRONTEND_URL: str = "http://localhost:5173"
     API_PUBLIC_URL: str = "http://localhost:8000"  # For OAuth callbacks; must be reachable from browser
+
+    @model_validator(mode="after")
+    def add_frontend_url_to_cors(self) -> "Settings":
+        if self.FRONTEND_URL and self.FRONTEND_URL.rstrip("/") not in self.CORS_ORIGINS:
+            self.CORS_ORIGINS = [*self.CORS_ORIGINS, self.FRONTEND_URL.rstrip("/")]
+        return self
     # Optional: MCP endpoint URL for manifests (e.g. if API is behind different domain). If unset, use API_PUBLIC_URL + API_V1_STR + "/mcp"
     MCP_PUBLIC_URL: str = ""
 

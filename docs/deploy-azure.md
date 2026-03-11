@@ -50,8 +50,26 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 
 ## Post-deploy
 
-- **Ingress & HTTPS**: The workflow installs NGINX Ingress and cert-manager. Point **demo.workmage.app** and **api-demo.workmage.app** DNS A records to the LoadBalancer IP (see job summary). cert-manager provisions a free Let's Encrypt TLS certificate automatically; use **https://demo.workmage.app**. To use a different domain, update `k8s/base/ingress.yaml` and `k8s/base/configmap.yaml`, and set the issuer email in `k8s/base/letsencrypt-issuer.yaml`.
+- **Ingress & HTTPS**: The workflow installs NGINX Ingress and cert-manager. Point **demo.workmage.app** and **api-demo.workmage.app** DNS A records to the LoadBalancer IP (see job summary). cert-manager provisions a free Let's Encrypt TLS certificate automatically; use **https://demo.workmage.app**. To use a different domain, update `k8s/base/ingress.yaml`, `k8s/base/configmap.yaml`, and `k8s/base/certificate.yaml`, and set the issuer email in `k8s/base/letsencrypt-issuer.yaml`.
 - **Migrations**: Run Alembic against the DB (e.g. from a one-off job or locally with `DATABASE_URL`): `alembic -c agent-foundry-api/alembic.ini upgrade head`.
+
+### Troubleshooting "Your connection is not private" (ERR_CERT_AUTHORITY_INVALID)
+
+The browser shows this when the TLS certificate is missing, self-signed, or for the wrong domain. Check that Let's Encrypt issued the cert:
+
+```powershell
+kubectl get certificate -n workmage
+kubectl describe certificate workmage-tls -n workmage
+kubectl get challenges -n workmage
+kubectl describe challenge -n workmage   # use the challenge name from the previous command
+```
+
+- **Certificate not Ready**: If `READY` is `False`, look at the Challenge events. Common causes:
+  - **DNS not pointing to the cluster**: `demo.workmage.app` and `api-demo.workmage.app` must resolve to your ingress LoadBalancer IP. Check with `nslookup demo.workmage.app` from outside the cluster.
+  - **Port 80 blocked**: Let's Encrypt validates via HTTP on port 80. Ensure your AKS LoadBalancer allows inbound 80 (NGINX Ingress does by default).
+  - **404 on challenge**: If the challenge fails with 404, the HTTP-01 solver ingress may not be getting traffic; ensure no other proxy (e.g. Cloudflare) is in front with "Flexible SSL" or blocking `/.well-known/acme-challenge/`.
+- **Force re-issue**: To retry issuance after fixing DNS or network: `kubectl delete certificate workmage-tls -n workmage` then re-run the workflow or `kubectl apply -k k8s/demo` (cert-manager will create a new Certificate from `k8s/base/certificate.yaml`).
+- **Clear HSTS**: If you previously visited the site and the browser cached HSTS, clear it for the domain: Chrome → `chrome://net-internals/#hsts` → Delete domain `workmage.app`, then reload.
 - **Storage**: The worker’s PVC `agent-runs` uses `ReadWriteMany`; on AKS you may need a storage class (e.g. Azure Files). Set `storageClassName` in `k8s/demo/worker-deployment.yaml` if required (demo overlay).
 
 ## Local apply (without the Action)
