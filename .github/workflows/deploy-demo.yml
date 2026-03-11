@@ -111,7 +111,12 @@ jobs:
       - name: Ensure NGINX Ingress Controller
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
-          echo "Waiting for ingress controller LoadBalancer to get external IP..."
+          echo "Waiting for ingress controller and admission webhook to be ready..."
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=180s
+          echo "Waiting for LoadBalancer to get external IP..."
           for i in $(seq 1 60); do
             EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             if [ -n "$EXTERNAL_IP" ]; then
