@@ -9,7 +9,7 @@ One-page guide to deploy the stack to Azure Kubernetes Service with the demo bra
 In short you need:
 
 - **Azure**: Subscription, AKS cluster, ACR (Azure Container Registry). AKS must be able to pull from ACR (use `az aks create --attach-acr` or see the infrastructure doc).
-- **Database & Redis**: Use **Azure Database for PostgreSQL** and **Azure Cache for Redis** for production, or use the in-cluster Postgres/Redis from the base manifests (demo only).
+- **Database & Redis**: Use **Azure Database for PostgreSQL** and **Azure Cache for Redis** for production (set `USE_AZURE_SERVICES=true` in repo variables and create `workmage-secrets` with your connection strings), or use the in-cluster Postgres/Redis from the demo overlay (default).
 - **GitHub repo secrets** (Settings → Secrets and variables → Actions):
   - `AZURE_CREDENTIALS`: JSON for a service principal (from `az ad sp create-for-rbac ... --sdk-auth` in the infrastructure doc).
   - `ACR_NAME`: ACR registry name (e.g. `myacr`).
@@ -50,8 +50,8 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 
 ## Post-deploy
 
+- **Ingress**: The workflow installs the NGINX Ingress Controller automatically and waits for the LoadBalancer IP. After the workflow completes, check the job summary for access instructions. Add the provided IP and hostnames to your hosts file (e.g. `C:\Windows\System32\drivers\etc\hosts`) and open **http://demo.example.com** in your browser. For a custom domain, point DNS A records to the LoadBalancer IP and update hostnames in `k8s/base/ingress.yaml` and `k8s/base/configmap.yaml`.
 - **Migrations**: Run Alembic against the DB (e.g. from a one-off job or locally with `DATABASE_URL`): `alembic -c agent-foundry-api/alembic.ini upgrade head`.
-- **Ingress**: Edit `k8s/base/ingress.yaml` (or overlay) with your hostnames and TLS; ensure your ingress controller is installed (e.g. NGINX or AGIC).
 - **Storage**: The worker’s PVC `agent-runs` uses `ReadWriteMany`; on AKS you may need a storage class (e.g. Azure Files). Set `storageClassName` in `k8s/demo/worker-deployment.yaml` if required (demo overlay).
 
 ## Local apply (without the Action)

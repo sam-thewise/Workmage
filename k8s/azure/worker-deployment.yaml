@@ -1,0 +1,93 @@
+# Celery worker + DinD sidecar for Azure deploy. Same as demo overlay.
+# Both containers mount the same PVC at /agent-runs; worker uses DOCKER_HOST (TLS) to talk to DinD.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-runs
+  namespace: workmage
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: azurefile-csi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: workmage
+  labels:
+    app: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: celery
+          image: agent-foundry-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info"]
+          env:
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2376"
+            - name: DOCKER_CERT_PATH
+              value: "/certs/client"
+            - name: DOCKER_TLS_VERIFY
+              value: "1"
+            - name: AGENT_SANDBOX_IMAGE
+              value: "agent-sandbox:latest"
+            - name: AGENT_RUNS_DIR
+              value: "/agent-runs"
+          envFrom:
+            - configMapRef:
+                name: workmage-config
+            - secretRef:
+                name: workmage-secrets
+          volumeMounts:
+            - name: agent-runs
+              mountPath: /agent-runs
+            - name: docker-certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+        - name: dind
+          image: docker:27-dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: "/certs"
+          volumeMounts:
+            - name: agent-runs
+              mountPath: /agent-runs
+            - name: docker-certs
+              mountPath: /certs
+          ports:
+            - containerPort: 2376
+              name: docker-tls
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+      volumes:
+        - name: agent-runs
+          persistentVolumeClaim:
+            claimName: agent-runs
+        - name: docker-certs
+          emptyDir: {}

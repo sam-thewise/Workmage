@@ -1,0 +1,18 @@
+# Overlay for Azure PostgreSQL + Azure Redis.
+# Excludes in-cluster postgres and redis; use workmage-secrets with Azure connection strings.
+# Create the secret before deploying: see docs/deploy-azure-infrastructure.md step 10.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: workmage
+
+resources:
+  - ../base
+  - worker-deployment.yaml
+  - worker-networkpolicy.yaml
+
+patches:
+  - path: patches/remove-postgres-service.yaml
+  - path: patches/remove-postgres-statefulset.yaml
+  - path: patches/remove-redis-service.yaml
+  - path: patches/remove-redis-deployment.yaml

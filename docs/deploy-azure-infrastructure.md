@@ -274,32 +274,28 @@ You can use **Variables** instead of secrets for `ACR_NAME`, `AKS_NAME`, and `AK
 
 Run the commands below from **any directory** (e.g. repo root). They use `kubectl` against whichever cluster is current in your kubeconfig—ensure you’ve run step 5 (`az aks get-credentials ...`) so the context points at your AKS cluster.
 
-The workflow applies manifests from `k8s/demo`. The **base** kustomization does not include the worker (no privileged DinD) or a secret; the **demo** overlay provides a secretGenerator (demo values) and a hardened worker with TLS. For a real deploy you should replace the secret with one that has your DB and Redis URLs (create out-of-band or use External Secrets).
+**If you use in-cluster Postgres/Redis** (default): Leave `USE_AZURE_SERVICES` unset. The workflow uses `k8s/demo`, which provides a secretGenerator and in-cluster Postgres/Redis. No manual secret needed.
 
-**If you use in-cluster Postgres/Redis** (default in demo): the demo overlay's secretGenerator is enough for a first run.
-
-**If you use Azure PostgreSQL and/or Azure Redis**: create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7).
+**If you use Azure PostgreSQL and/or Azure Redis**: Set the GitHub variable `USE_AZURE_SERVICES` to `true`. The workflow will use `k8s/azure`, which excludes in-cluster Postgres and Redis and uses your Azure services. Create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7).
 
 - **DATABASE_URL / DATABASE_SYNC_URL**: From step 6; they already contain your Azure PostgreSQL admin user and password (the one you set as `$env:PG_ADMIN_PASSWORD`). The app uses these to talk to Azure Postgres—no separate “Postgres password” field for the app.
 - **REDIS_URL**: From step 7 (Azure Redis).
 - **SECRET_KEY**: Generate a random value (see below).
-- **POSTGRES_PASSWORD**: Used only by the **in-cluster** Postgres pod (the base still deploys it). Since the app connects to **Azure** Postgres via DATABASE_URL, this value is not used by the app. You can set it to your Azure admin password (same as in the connection strings) or any random string—it just satisfies the in-cluster Postgres container.
 
 Generate a random value for `SECRET_KEY` (used for session/signing). In PowerShell: `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }) -as [byte[]])` or use OpenSSL if installed: `openssl rand -hex 32`. Use that string as the `SECRET_KEY` value below.
 
 ```powershell
-kubectl create namespace agent-foundry --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace workmage --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create secret generic workmage-secrets -n agent-foundry `
+kubectl create secret generic workmage-secrets -n workmage `
   --from-literal=DATABASE_URL='<from-step-6>' `
   --from-literal=DATABASE_SYNC_URL='<from-step-6>' `
   --from-literal=REDIS_URL='<from-step-7>' `
   --from-literal=SECRET_KEY='<paste-generated-key-here>' `
-  --from-literal=POSTGRES_PASSWORD='<same-as-PG_ADMIN_PASSWORD-or-any-string>' `
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-If you use the demo overlay's generated secret, the first `kubectl apply -k k8s/demo` will create it. For production, create the secret out-of-band (as above) and do not rely on the demo secretGenerator.
+Create this secret **before** the first deploy when using `USE_AZURE_SERVICES=true`; the workflow checks for it and fails with a helpful message if it's missing.
 
 ---
 
@@ -308,9 +304,9 @@ If you use the demo overlay's generated secret, the first `kubectl apply -k k8s/
 - **Azure**
   - ACR: `az acr repository list --name $env:ACR_NAME --output table` (empty until first push).
   - AKS: `az aks show --resource-group $env:RESOURCE_GROUP --name $env:AKS_NAME --query provisioningState -o tsv` → `Succeeded`.
-- **kubectl** (after `az aks get-credentials ...`): `kubectl get nodes` and `kubectl get ns agent-foundry`.
+- **kubectl** (after `az aks get-credentials ...`): `kubectl get nodes` and `kubectl get ns workmage`.
 
-After the first run of the **Deploy to AKS (demo branch)** workflow you should see images in ACR and workloads in the `agent-foundry` namespace.
+After the first run of the workflow you should see images in ACR and workloads in the `workmage` namespace.
 
 ---
 
@@ -322,6 +318,7 @@ After the first run of the **Deploy to AKS (demo branch)** workflow you should s
 - [ ] AKS created with `--attach-acr`; `kubectl get nodes` works (step 5).
 - [ ] (Optional) PostgreSQL Flexible Server and DB created; connection strings ready (step 6).
 - [ ] (Optional) Azure Cache for Redis created; `REDIS_URL` ready (step 7).
+- [ ] (If using Azure) `USE_AZURE_SERVICES=true` variable set; `workmage-secrets` created with Azure URLs (step 10).
 - [ ] Service principal created; full JSON copied (step 8).
 - [ ] GitHub repo secrets (and/or variables) set: `AZURE_CREDENTIALS`, `ACR_NAME`, `AKS_NAME`, `AKS_RESOURCE_GROUP` (step 9).
 - [ ] Kubernetes secret `workmage-secrets` created or left to the example from manifests (step 10).

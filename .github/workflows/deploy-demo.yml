@@ -1,14 +1,14 @@
-# Deploy Agent Foundry to AKS when pushing to the demo branch.
+# Deploy Agent Foundry to AKS when pushing to the master branch.
 # Builds and pushes images to ACR, then deploys via kubectl + Kustomize.
-name: Deploy to AKS (demo branch)
+name: Deploy to AKS (master branch)
 
 on:
   push:
-    branches: [demo]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-demo
+  group: deploy-master
   cancel-in-progress: true
 
 env:
@@ -16,6 +16,8 @@ env:
   AKS_NAME: ${{ vars.AKS_NAME || secrets.AKS_NAME }}
   AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP || secrets.AKS_RESOURCE_GROUP }}
   namespace: workmage
+  # Use 'azure' overlay (no in-cluster postgres/redis) when USE_AZURE_SERVICES=true
+  K8S_OVERLAY: ${{ vars.USE_AZURE_SERVICES == 'true' && 'azure' || 'demo' }}
 
 jobs:
   build-and-deploy:
@@ -106,9 +108,31 @@ jobs:
         run: |
           kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Ensure NGINX Ingress Controller
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+          echo "Waiting for ingress controller LoadBalancer to get external IP..."
+          for i in $(seq 1 60); do
+            EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            if [ -n "$EXTERNAL_IP" ]; then
+              echo "EXTERNAL_IP=$EXTERNAL_IP" >> $GITHUB_ENV
+              echo "Ingress external IP: $EXTERNAL_IP"
+              break
+            fi
+            sleep 5
+          done
+
+      - name: Verify secret exists (Azure overlay)
+        if: env.K8S_OVERLAY == 'azure'
+        run: |
+          if ! kubectl get secret workmage-secrets -n ${{ env.NAMESPACE }} &>/dev/null; then
+            echo "::error::workmage-secrets not found. Create it with Azure DATABASE_URL and REDIS_URL before deploying. See docs/deploy-azure-infrastructure.md step 10."
+            exit 1
+          fi
+
       - name: Set image tags and deploy
         run: |
-          cd k8s/demo
+          cd k8s/${{ env.K8S_OVERLAY }}
           kustomize edit set image agent-foundry-api:latest=${{ env.ACR_LOGIN_SERVER }}/agent-foundry-api:demo
           kustomize edit set image agent-foundry-frontend:latest=${{ env.ACR_LOGIN_SERVER }}/agent-foundry-frontend:demo
           kustomize edit set image agent-sandbox:latest=${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:demo
@@ -119,3 +143,19 @@ jobs:
         run: |
           kubectl set env deployment/worker -n ${{ env.NAMESPACE }} \
             AGENT_SANDBOX_IMAGE=${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:demo
+
+      - name: Output access instructions
+        if: env.EXTERNAL_IP != ''
+        run: |
+          echo "## Deployment complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**To access the site:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Add this line to your hosts file (\`C:\\Windows\\System32\\drivers\\etc\\hosts\` on Windows, \`/etc/hosts\` on Mac/Linux):" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.EXTERNAL_IP }}  demo.example.com  api-demo.example.com" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "2. Open **http://demo.example.com** in your browser." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Or point your domain's DNS A records to \`${{ env.EXTERNAL_IP }}\` and update the ingress/ConfigMap hostnames." >> $GITHUB_STEP_SUMMARY
