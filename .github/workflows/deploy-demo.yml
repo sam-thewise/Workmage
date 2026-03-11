@@ -157,9 +157,10 @@ jobs:
           for d in api frontend beat worker twitter-automation; do
             kubectl rollout restart deployment/$d -n ${{ env.NAMESPACE }} || true
           done
-          for d in api frontend beat worker twitter-automation; do
+          for d in api frontend beat twitter-automation; do
             kubectl rollout status deployment/$d -n ${{ env.NAMESPACE }} --timeout=120s
           done
+          kubectl rollout status deployment/worker -n ${{ env.NAMESPACE }} --timeout=300s
 
       - name: Set worker sandbox image
         run: |
