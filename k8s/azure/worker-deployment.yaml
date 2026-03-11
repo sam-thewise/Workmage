@@ -1,17 +1,4 @@
-# Celery worker + DinD sidecar for Azure deploy. Same as demo overlay.
-# Both containers mount the same PVC at /agent-runs; worker uses DOCKER_HOST (TLS) to talk to DinD.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: agent-runs
-  namespace: workmage
-spec:
-  accessModes: ["ReadWriteMany"]
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: azurefile-csi
----
+# Celery worker + DinD sidecar for Azure deploy. Uses emptyDir for agent-runs (no PVC).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,7 +74,6 @@ spec:
               cpu: "2"
       volumes:
         - name: agent-runs
-          persistentVolumeClaim:
-            claimName: agent-runs
+          emptyDir: {}
         - name: docker-certs
           emptyDir: {}

@@ -1,19 +1,6 @@
 # Demo-only: Celery worker + DinD sidecar with TLS and resource limits.
-# Both containers mount the same PVC at /agent-runs; worker uses DOCKER_HOST (TLS) to talk to DinD.
-# Production should use a different execution backend (e.g. Kubernetes Jobs) or a dedicated overlay.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: agent-runs
-  namespace: workmage
-spec:
-  accessModes: ["ReadWriteMany"]
-  resources:
-    requests:
-      storage: 10Gi
-  # AKS: use Azure Files so the PVC can bind (default storage classes are RWO).
-  storageClassName: azurefile-csi
----
+# Both containers share agent-runs via emptyDir (no PVC required; data is ephemeral).
+# For persistent agent-runs, use a PVC with storageClassName: azurefile-csi and ensure Azure Files CSI is enabled on AKS.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -89,7 +76,6 @@ spec:
               cpu: "2"
       volumes:
         - name: agent-runs
-          persistentVolumeClaim:
-            claimName: agent-runs
+          emptyDir: {}
         - name: docker-certs
           emptyDir: {}
