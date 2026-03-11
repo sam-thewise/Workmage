@@ -158,9 +158,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "1. Add this line to your hosts file (\`C:\\Windows\\System32\\drivers\\etc\\hosts\` on Windows, \`/etc/hosts\` on Mac/Linux):" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ env.EXTERNAL_IP }}  demo.example.com  api-demo.example.com" >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.EXTERNAL_IP }}  demo.workmage.app  api-demo.workmage.app" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "2. Open **http://demo.example.com** in your browser." >> $GITHUB_STEP_SUMMARY
+          echo "2. Open **http://demo.workmage.app** in your browser." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Or point your domain's DNS A records to \`${{ env.EXTERNAL_IP }}\` and update the ingress/ConfigMap hostnames." >> $GITHUB_STEP_SUMMARY
