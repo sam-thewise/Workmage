@@ -1,0 +1,20 @@
+# One-off pod to test DB connectivity using workmage-secrets (same as API).
+# Usage: kubectl apply -f scripts/test-db-connect.yaml -n workmage
+#        kubectl logs -n workmage -l app=pg-test -f
+#        kubectl delete pod -n workmage -l app=pg-test
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-test
+  namespace: workmage
+  labels:
+    app: pg-test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: pg-test
+      image: postgres:16-alpine
+      command: ["sh", "-c", 'psql "$DATABASE_SYNC_URL" -c "SELECT 1"']
+      envFrom:
+        - secretRef:
+            name: workmage-secrets

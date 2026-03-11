@@ -72,6 +72,10 @@ kubectl describe challenge -n workmage   # use the challenge name from the previ
 - **Clear HSTS**: If you previously visited the site and the browser cached HSTS, clear it for the domain: Chrome → `chrome://net-internals/#hsts` → Delete domain `workmage.app`, then reload.
 - **Storage**: The worker’s PVC `agent-runs` uses `ReadWriteMany`; on AKS you may need a storage class (e.g. Azure Files). Set `storageClassName` in `k8s/demo/worker-deployment.yaml` if required (demo overlay).
 
+### Connection refused to Azure PostgreSQL
+
+If the API logs show `ConnectionRefusedError` to the database, the Postgres firewall is likely blocking AKS. In Azure Portal go to your PostgreSQL Flexible Server → **Networking** → enable **Allow public access from any Azure service within Azure to this server** and save. Or add a firewall rule for your AKS outbound IP (get it with `kubectl run curl-debug --rm -it --restart=Never -n workmage --image=curlimages/curl -- curl -s ifconfig.me`).
+
 ## Local apply (without the Action)
 
 ```bash

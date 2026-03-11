@@ -1,0 +1,25 @@
+# One-off job to test DB connectivity using workmage-secrets. Delete after use.
+# Run: kubectl apply -f k8s/debug-pg-connect.yaml
+# Check: kubectl logs job/pg-connect-test -n workmage -f
+# Cleanup: kubectl delete -f k8s/debug-pg-connect.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-connect-test
+  namespace: workmage
+spec:
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pg-test
+          image: postgres:16-alpine
+          command: ["sh", "-c", "psql \"$DATABASE_SYNC_URL\" -c 'SELECT 1'"]
+          env:
+            - name: DATABASE_SYNC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: workmage-secrets
+                  key: DATABASE_SYNC_URL
+---

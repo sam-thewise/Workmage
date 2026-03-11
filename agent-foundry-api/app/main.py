@@ -1,6 +1,7 @@
 """Agent Foundry API - Main application."""
 from contextlib import asynccontextmanager
 import logging
+import re
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,9 +30,19 @@ async def promote_admin_emails():
         await db.commit()
 
 
+def _db_connection_info() -> str:
+    """Return a safe description of DATABASE_URL for logging (no password)."""
+    url = settings.DATABASE_URL
+    # Match @host:port/ or @host/ (postgresql://user:pass@host:5432/db)
+    m = re.search(r"@([^/]+)/", url)
+    if m:
+        return m.group(1)
+    return "(could not parse)"
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
+    logger.info("Database connection: %s (from DATABASE_URL)", _db_connection_info())
     await promote_admin_emails()
     if settings.TWITTER_MCP_URL:
         try:
