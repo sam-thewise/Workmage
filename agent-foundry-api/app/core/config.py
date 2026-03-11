@@ -43,6 +43,15 @@ class Settings(BaseSettings):
         if self.FRONTEND_URL and self.FRONTEND_URL.rstrip("/") not in self.CORS_ORIGINS:
             self.CORS_ORIGINS = [*self.CORS_ORIGINS, self.FRONTEND_URL.rstrip("/")]
         return self
+
+    @model_validator(mode="after")
+    def derive_async_url_from_sync_if_only_sync_set(self) -> "Settings":
+        """If only DATABASE_SYNC_URL is set (e.g. Azure secret), use it for async too to avoid connecting to default postgres:5432."""
+        default_async = "postgresql+asyncpg://postgres:postgres@postgres:5432/agentfoundry"
+        default_sync = "postgresql://postgres:postgres@postgres:5432/agentfoundry"
+        if self.DATABASE_URL == default_async and self.DATABASE_SYNC_URL != default_sync:
+            self.DATABASE_URL = self.DATABASE_SYNC_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return self
     # Optional: MCP endpoint URL for manifests (e.g. if API is behind different domain). If unset, use API_PUBLIC_URL + API_V1_STR + "/mcp"
     MCP_PUBLIC_URL: str = ""
 

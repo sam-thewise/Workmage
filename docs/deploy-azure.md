@@ -9,7 +9,7 @@ One-page guide to deploy the stack to Azure Kubernetes Service with the master-b
 In short you need:
 
 - **Azure**: Subscription, AKS cluster, ACR (Azure Container Registry). AKS must be able to pull from ACR (use `az aks create --attach-acr` or see the infrastructure doc).
-- **Database & Redis**: Use **Azure Database for PostgreSQL** and **Azure Cache for Redis** for production (set `USE_AZURE_SERVICES=true` in repo variables and create `workmage-secrets` with your connection strings), or use the in-cluster Postgres/Redis from the demo overlay (default).
+- **Database & Redis**: Use **Azure Database for PostgreSQL** and **Azure Cache for Redis** for production (set `USE_AZURE_SERVICES=true` in repo variables or secrets and create `workmage-secrets` with your connection strings), or use the in-cluster Postgres/Redis from the demo overlay (default).
 - **GitHub repo secrets** (Settings → Secrets and variables → Actions):
   - `AZURE_CREDENTIALS`: JSON for a service principal (from `az ad sp create-for-rbac ... --sdk-auth` in the infrastructure doc).
   - `ACR_NAME`: ACR registry name (e.g. `myacr`).

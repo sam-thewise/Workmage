@@ -276,9 +276,10 @@ Run the commands below from **any directory** (e.g. repo root). They use `kubect
 
 **If you use in-cluster Postgres/Redis** (default): Leave `USE_AZURE_SERVICES` unset. The workflow uses `k8s/demo`, which provides a secretGenerator and in-cluster Postgres/Redis. No manual secret needed.
 
-**If you use Azure PostgreSQL and/or Azure Redis**: Set the GitHub variable `USE_AZURE_SERVICES` to `true`. The workflow will use `k8s/azure`, which excludes in-cluster Postgres and Redis and uses your Azure services. Create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7).
+**If you use Azure PostgreSQL and/or Azure Redis**: Set the GitHub Actions variable or secret `USE_AZURE_SERVICES` to `true`. The workflow will use `k8s/azure`, which excludes in-cluster Postgres and Redis and uses your Azure services. Create the Kubernetes secret manually once (replace placeholders with the values from steps 6 and 7).
 
 - **DATABASE_URL / DATABASE_SYNC_URL**: From step 6; they already contain your Azure PostgreSQL admin user and password (the one you set as `$env:PG_ADMIN_PASSWORD`). The app uses these to talk to Azure Postgres—no separate “Postgres password” field for the app.
+  You can set both URL keys or only **DATABASE_SYNC_URL**; the API derives the async URL from it when needed.
 - **REDIS_URL**: From step 7 (Azure Redis).
 - **SECRET_KEY**: Generate a random value (see below).
 

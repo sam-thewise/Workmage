@@ -16,8 +16,8 @@ env:
   AKS_NAME: ${{ vars.AKS_NAME || secrets.AKS_NAME }}
   AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP || secrets.AKS_RESOURCE_GROUP }}
   NAMESPACE: workmage
-  # Use 'azure' overlay (no in-cluster postgres/redis) when USE_AZURE_SERVICES=true
-  K8S_OVERLAY: ${{ vars.USE_AZURE_SERVICES == 'true' && 'azure' || 'demo' }}
+  # Use 'azure' overlay (no in-cluster postgres/redis) when USE_AZURE_SERVICES=true (variable or secret)
+  K8S_OVERLAY: ${{ (vars.USE_AZURE_SERVICES == 'true' || secrets.USE_AZURE_SERVICES == 'true') && 'azure' || 'demo' }}
 
 jobs:
   build-and-deploy:
