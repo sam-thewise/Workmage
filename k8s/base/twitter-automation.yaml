@@ -18,7 +18,7 @@ spec:
       containers:
         - name: twitter-automation
           image: twitter-automation-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8010
               name: http

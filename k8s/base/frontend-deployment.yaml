@@ -18,7 +18,7 @@ spec:
       containers:
         - name: frontend
           image: agent-foundry-frontend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 5173
               name: http

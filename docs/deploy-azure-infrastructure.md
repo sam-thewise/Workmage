@@ -1,6 +1,6 @@
 # Azure infrastructure setup for Agent Foundry (AKS)
 
-Step-by-step setup of Azure resources via Azure CLI so the **demo** branch GitHub Action can build, push, and deploy. Do this once before relying on the workflow.
+Step-by-step setup of Azure resources via Azure CLI so the **master**-branch GitHub Action can build, push, and deploy. Do this once before relying on the workflow.
 
 All commands are for **PowerShell** (Windows). Variables use `$env:VAR` so they work correctly in the same session.
 
@@ -323,4 +323,4 @@ After the first run of the workflow you should see images in ACR and workloads i
 - [ ] GitHub repo secrets (and/or variables) set: `AZURE_CREDENTIALS`, `ACR_NAME`, `AKS_NAME`, `AKS_RESOURCE_GROUP` (step 9).
 - [ ] Kubernetes secret `workmage-secrets` created or left to the example from manifests (step 10).
 
-Then push to the **demo** branch or run the workflow manually; see [deploy-azure.md](deploy-azure.md) for deploy flow and app-level config.
+Then push to **master** or run the workflow manually; see [deploy-azure.md](deploy-azure.md) for deploy flow and app-level config.

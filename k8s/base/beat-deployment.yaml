@@ -18,7 +18,7 @@ spec:
       containers:
         - name: beat
           image: agent-foundry-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=info"]
           envFrom:
             - configMapRef:

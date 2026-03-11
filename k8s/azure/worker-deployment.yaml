@@ -32,7 +32,7 @@ spec:
       containers:
         - name: celery
           image: agent-foundry-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info"]
           env:
             - name: DOCKER_HOST

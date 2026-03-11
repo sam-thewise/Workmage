@@ -1,6 +1,6 @@
 # Deploy Agent Foundry to Azure (AKS)
 
-One-page guide to deploy the stack to Azure Kubernetes Service with the demo branch GitHub Action.
+One-page guide to deploy the stack to Azure Kubernetes Service with the master-branch GitHub Action.
 
 ## Prerequisites
 
@@ -42,15 +42,15 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 - **AGENT_SANDBOX_IMAGE**: The worker must use the full ACR image so DinD can pull it (e.g. `myacr.azurecr.io/agent-sandbox:demo`). The GitHub Action sets this on the worker deployment after apply.
 - **Beat vs worker**: Run one Beat deployment (scheduler) and one or more worker deployments (task execution). Same image; Beat command: `celery -A app.worker.celery_app beat ...`; worker command: `celery -A app.worker.celery_app worker ...`.
 
-## Deploy flow (demo branch)
+## Deploy flow (master branch)
 
-1. Push to the `demo` branch (or run the workflow manually via **Actions → Deploy to AKS (demo branch) → Run workflow**).
-2. The workflow: logs in to Azure, builds and pushes the four images to ACR (tag `:demo` and `:<sha>`), runs `kubectl apply -k k8s/demo` (Kustomize sets image tags), then sets the worker’s `AGENT_SANDBOX_IMAGE` to the ACR sandbox image.
+1. Push to the **master** branch (or run the workflow manually via **Actions → Deploy to AKS (master branch) → Run workflow**).
+2. The workflow: logs in to Azure, builds and pushes the four images to ACR (tag `:demo` and `:<sha>`), runs `kubectl apply -k k8s/demo` or `k8s/azure`, then sets the worker’s `AGENT_SANDBOX_IMAGE` to the ACR sandbox image.
 3. Ensure the `agent-foundry` namespace and the `workmage-secrets` secret exist. For the **demo overlay** (`k8s/demo`), the example `workmage-secrets` secret is created by the manifests; when using the **base manifests** (`k8s/base`), you must create the `workmage-secrets` secret yourself (for example by copying `k8s/base/secret.example.yaml` to `secret.yaml` or via `kubectl create secret generic`).
 
 ## Post-deploy
 
-- **Ingress & HTTPS**: The workflow installs NGINX Ingress and cert-manager. Point **demo.workmage.app** and **api-demo.workmage.app** DNS A records to the LoadBalancer IP (see job summary). cert-manager provisions a free Let's Encrypt TLS certificate automatically; use **https://demo.workmage.app**. To use a different domain, update `k8s/base/ingress.yaml`, `k8s/base/configmap.yaml`, and `k8s/base/certificate.yaml`, and set the issuer email in `k8s/base/letsencrypt-issuer.yaml`.
+- **Ingress & HTTPS**: The workflow installs NGINX Ingress and cert-manager. Point **demo.workmage.app** and **api-demo.workmage.app** DNS A records to the LoadBalancer IP (see job summary). cert-manager provisions a free Let's Encrypt TLS certificate automatically; use **https://demo.workmage.app**. To use a different domain, update `k8s/base/ingress.yaml`, and `k8s/base/configmap.yaml`, and set the issuer email in `k8s/base/letsencrypt-issuer.yaml`.
 - **Migrations**: Run Alembic against the DB (e.g. from a one-off job or locally with `DATABASE_URL`): `alembic -c agent-foundry-api/alembic.ini upgrade head`.
 
 ### Troubleshooting "Your connection is not private" (ERR_CERT_AUTHORITY_INVALID)

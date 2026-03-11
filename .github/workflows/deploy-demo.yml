@@ -152,6 +152,15 @@ jobs:
           kustomize edit set image twitter-automation-service:latest=${{ env.ACR_LOGIN_SERVER }}/twitter-automation-service:demo
           kubectl apply -k .
 
+      - name: Rollout deployments (pull latest images)
+        run: |
+          for d in api frontend beat worker twitter-automation; do
+            kubectl rollout restart deployment/$d -n ${{ env.NAMESPACE }} || true
+          done
+          for d in api frontend beat worker twitter-automation; do
+            kubectl rollout status deployment/$d -n ${{ env.NAMESPACE }} --timeout=120s
+          done
+
       - name: Set worker sandbox image
         run: |
           kubectl set env deployment/worker -n ${{ env.NAMESPACE }} \
