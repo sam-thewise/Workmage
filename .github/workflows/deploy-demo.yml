@@ -143,6 +143,10 @@ jobs:
             exit 1
           fi
 
+      - name: Remove previous migration job (so this deploy runs migrations again)
+        run: |
+          kubectl delete job db-migrate -n ${{ env.NAMESPACE }} --ignore-not-found
+
       - name: Set image tags and deploy
         run: |
           cd k8s/${{ env.K8S_OVERLAY }}
@@ -151,6 +155,10 @@ jobs:
           kustomize edit set image agent-sandbox:latest=${{ env.ACR_LOGIN_SERVER }}/agent-sandbox:demo
           kustomize edit set image twitter-automation-service:latest=${{ env.ACR_LOGIN_SERVER }}/twitter-automation-service:demo
           kubectl apply -k .
+
+      - name: Wait for DB migrations
+        run: |
+          kubectl wait --for=condition=complete job/db-migrate -n ${{ env.NAMESPACE }} --timeout=300s
 
       - name: Rollout deployments (pull latest images)
         run: |

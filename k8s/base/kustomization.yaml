@@ -16,3 +16,4 @@ resources:
   - twitter-automation.yaml
   - frontend-deployment.yaml
   - ingress.yaml
+  - db-migrate-job.yaml

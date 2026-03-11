@@ -51,7 +51,7 @@ Do not commit real secrets. For CI, create the secret once in the cluster (or us
 ## Post-deploy
 
 - **Ingress & HTTPS**: The workflow installs NGINX Ingress and cert-manager. Point **demo.workmage.app** and **api-demo.workmage.app** DNS A records to the LoadBalancer IP (see job summary). cert-manager provisions a free Let's Encrypt TLS certificate automatically; use **https://demo.workmage.app**. To use a different domain, update `k8s/base/ingress.yaml`, and `k8s/base/configmap.yaml`, and set the issuer email in `k8s/base/letsencrypt-issuer.yaml`.
-- **Migrations**: Run Alembic against the DB (e.g. from a one-off job or locally with `DATABASE_URL`): `alembic -c agent-foundry-api/alembic.ini upgrade head`.
+- **Migrations**: The workflow runs a one-off Job `db-migrate` on every deploy (Alembic `upgrade head`) before restarting the API, so the DB schema is created/updated automatically. To run migrations manually (e.g. after changing manifests without redeploying): delete the job and re-apply the overlay, or run locally with `DATABASE_SYNC_URL` set: `alembic -c agent-foundry-api/alembic.ini upgrade head`.
 
 ### Troubleshooting "Your connection is not private" (ERR_CERT_AUTHORITY_INVALID)
 

@@ -296,7 +296,7 @@ kubectl create secret generic workmage-secrets -n workmage `
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Create this secret **before** the first deploy when using `USE_AZURE_SERVICES=true`; the workflow checks for it and fails with a helpful message if it's missing.
+Create this secret **before** the first deploy when using `USE_AZURE_SERVICES=true`; the workflow checks for it and fails with a helpful message if it's missing. The first deploy runs a **db-migrate** Job (Alembic `upgrade head`) to create/update the DB schema, then starts the API.
 
 ---
 

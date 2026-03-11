@@ -1,0 +1,22 @@
+# One-off Job to run Alembic migrations. Uses same image and secrets as the API.
+# The deploy workflow deletes this job before each apply so migrations run on every deploy.
+# To run manually once: kubectl apply -f k8s/base/db-migrate-job.yaml (set image if needed), then kubectl logs job/db-migrate -n workmage -f
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: workmage
+spec:
+  ttlSecondsAfterFinished: 86400  # keep for 24h for logs
+  backoffLimit: 4
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: agent-foundry-api:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - secretRef:
+                name: workmage-secrets
+          imagePullPolicy: IfNotPresent
